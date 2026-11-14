@@ -4,20 +4,21 @@ import { rng } from './track';
 
 const SKY_FRAG = /* glsl */ `
 uniform vec3 uTop, uHorizon, uBottom, uGlow, uPlanetA, uPlanetB;
-uniform float uTime, uBeat;
+uniform float uTime, uBeat, uHype, uRec;
 varying vec3 vDir;
+vec3 hue(float h) { return 0.5 + 0.5 * cos(6.2832 * (h + vec3(0.0, 0.33, 0.67))); }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
   vec3 d = normalize(vDir);
   float h = d.y;
   vec3 col = mix(uHorizon, uTop, smoothstep(0.0, 0.62, h));
   col = mix(col, uBottom, smoothstep(0.03, -0.5, h));
-  col += uGlow * exp(-abs(h) * 9.0) * (0.30 + 0.18 * uBeat);
+  col += uGlow * exp(-abs(h) * 9.0) * (0.30 + 0.18 * uBeat) * (1.0 + 0.6 * uHype);
 
   float az = atan(d.x, -d.z);
   float beams = pow(0.5 + 0.5 * sin(az * 14.0 + uTime * 0.25), 10.0)
               + 0.6 * pow(0.5 + 0.5 * sin(az * 23.0 - uTime * 0.17 + 1.3), 14.0);
-  col += uGlow * beams * 0.15 * smoothstep(-0.05, 0.1, h) * smoothstep(0.8, 0.1, h) * (0.7 + 0.5 * uBeat);
+  col += uGlow * beams * 0.15 * smoothstep(-0.05, 0.1, h) * smoothstep(0.8, 0.1, h) * (0.7 + 0.5 * uBeat) * (1.0 + 1.8 * uHype);
 
   // drifting triangle mosaic
   vec2 g = vec2(az * 7.0, h * 10.0 - uTime * 0.06);
@@ -26,7 +27,9 @@ void main() {
   float tw = hash(gi + tri * 17.0);
   float blink = smoothstep(0.7, 1.0, sin(uTime * (0.6 + tw * 1.6) + tw * 40.0));
   float up = smoothstep(0.03, 0.3, h);
-  col += mix(uGlow, uHorizon, 0.4) * blink * 0.12 * up;
+  col += mix(uGlow, uHorizon, 0.4) * blink * 0.12 * up * (1.0 + 1.2 * uHype);
+  // record run: a rainbow aurora sweeps the sky
+  col += hue(az * 0.35 + uTime * 0.18) * exp(-abs(h - 0.3) * 6.0) * 0.4 * uRec * (0.7 + 0.5 * uBeat);
   float line = min(min(gf.x, gf.y), abs(gf.x - gf.y));
   col += uGlow * smoothstep(0.035, 0.0, line) * 0.05 * up;
 
@@ -71,7 +74,7 @@ export class Background {
   constructor(pal: Palette, lengthZ: number) {
     const col = (h: number) => ({ value: new THREE.Color(h) });
     this.skyU = {
-      uTime: { value: 0 }, uBeat: { value: 0 },
+      uTime: { value: 0 }, uBeat: { value: 0 }, uHype: { value: 0 }, uRec: { value: 0 },
       uTop: col(pal.top), uHorizon: col(pal.horizon), uBottom: col(pal.bottom), uGlow: col(pal.glow),
       uPlanetA: col(pal.planetA), uPlanetB: col(pal.planetB),
     };
@@ -136,8 +139,9 @@ export class Background {
 
   setScale(px: number): void { this.moteU.uScale.value = px; }
 
-  update(dt: number, time: number, beat: number, cam: THREE.Vector3): void {
+  update(dt: number, time: number, beat: number, cam: THREE.Vector3, hype = 0, rec = 0): void {
     this.skyU.uTime.value = time; this.skyU.uBeat.value = beat;
+    this.skyU.uHype.value = hype; this.skyU.uRec.value = rec;
     this.sky.position.copy(cam);
     this.moteU.uTime.value = time;
     (this.moteU.uCam.value as THREE.Vector3).copy(cam);
@@ -145,7 +149,7 @@ export class Background {
       const dz = cam.z - s.o.position.z;
       if (dz < -12 || dz > 230) { s.o.visible = false; continue; }
       s.o.visible = true;
-      s.o.rotateOnAxis(s.ax, s.s * dt * (1 + beat * 1.5));
+      s.o.rotateOnAxis(s.ax, s.s * dt * (1 + beat * 1.5) * (1 + hype * 1.5));
       s.o.position.y = s.y + Math.sin(time * 0.7 + s.ph) * 1.2;
     }
   }

@@ -31,7 +31,6 @@ export const CFG = {
 
   /** Fixed simulation step. */
   dt: 1 / 120,
-  bpm: 120,
   /** Floor rows appended after the finish line. */
   runway: 8,
 } as const;

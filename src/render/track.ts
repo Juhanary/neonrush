@@ -31,8 +31,9 @@ void main() {
 
 const FRAG = /* glsl */ `
 uniform vec3 uFloor, uEdge, uBlock, uBlockEdge, uAccent, uFog, uGlow;
-uniform float uTime, uBeat;
+uniform float uTime, uBeat, uHype, uRec;
 uniform vec3 uPulse; // x, z, age
+vec3 hue(float h) { return 0.5 + 0.5 * cos(6.2832 * (h + vec3(0.0, 0.33, 0.67))); }
 varying vec3 vLocal, vScale, vWorld;
 varying float vKind, vSeed, vAhead;
 
@@ -58,7 +59,8 @@ void main() {
     float chk = mod(floor(vWorld.x / 2.4 + 50.0) + floor(-vWorld.z / 4.0), 2.0);
     base = uFloor * (0.42 + 0.2 * chk) * (top ? 1.0 : 0.55);
     if (top) base += uEdge * (0.03 * near + 0.04 * uBeat);
-    ecol = uEdge; gain = 0.85 + 0.75 * near * (0.5 + 0.5 * wave) + 0.4 * uBeat;
+    ecol = mix(uEdge, hue(vAhead * 0.02 - uTime * 0.7) * 1.2, 0.8 * uRec);
+    gain = (0.85 + 0.75 * near * (0.5 + 0.5 * wave) + 0.4 * uBeat) * (1.0 + 0.3 * uHype + 0.2 * uRec);
   } else if (vKind < 1.5) {     // block (obstacle)
     float stripes = step(0.5, fract((vWorld.x + vWorld.y) * 0.9 - uTime * 0.9));
     base = uBlock * (0.30 + 0.24 * stripes + 0.22 * uBeat);
@@ -96,6 +98,7 @@ export interface TrackUniforms {
   [k: string]: THREE.IUniform;
   uTime: THREE.IUniform<number>; uBeat: THREE.IUniform<number>; uShipZ: THREE.IUniform<number>;
   uPulse: THREE.IUniform<THREE.Vector3>;
+  uHype: THREE.IUniform<number>; uRec: THREE.IUniform<number>;
 }
 
 function hdr(hex: number, k: number): THREE.Color {
@@ -125,7 +128,7 @@ export class Track {
     const col = (h: number) => ({ value: new THREE.Color(h) });
     this.uniforms = {
       uTime: { value: 0 }, uBeat: { value: 0 }, uShipZ: { value: 0 },
-      uPulse: { value: new THREE.Vector3(0, 0, 99) },
+      uPulse: { value: new THREE.Vector3(0, 0, 99) }, uHype: { value: 0 }, uRec: { value: 0 },
       uFloor: col(pal.floor), uEdge: col(pal.edge), uBlock: col(pal.block), uBlockEdge: col(pal.blockEdge),
       uAccent: col(pal.accent), uFog: col(pal.fog), uGlow: col(pal.glow),
     };
@@ -263,8 +266,9 @@ export class Track {
     this.uniforms.uPulse.value.set(x, -z, 0);
   }
 
-  update(dt: number, time: number, beat: number, shipZ: number): void {
+  update(dt: number, time: number, beat: number, shipZ: number, hype = 0, rec = 0): void {
     const u = this.uniforms;
+    u.uHype.value = hype; u.uRec.value = rec;
     u.uTime.value = time; u.uBeat.value = beat; u.uShipZ.value = shipZ;
     u.uPulse.value.z += dt;
     for (const sp of this.spinners) sp.o.rotation.z += sp.s * dt;

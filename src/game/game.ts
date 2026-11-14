@@ -33,6 +33,9 @@ export class Game {
   private ui: Ui;
   private touch = false;
   private nextHint = 0;
+  private prevBest = 0;
+  private hype = 0;
+  private fire = 0;
 
   constructor(private view: View, surface: HTMLElement) {
     this.sim = new Sim(this.levels[0]);
@@ -92,11 +95,13 @@ export class Game {
     this.prev = { ...this.sim.s };
     this.view.resetRun();
     this.ui.hideCallout();
+    this.ui.hideBanner();
+    this.ui.setHype(0);
     this.ui.showMenu(this.levels.map((l) => {
       const pal = PALETTES[l.def.world % PALETTES.length];
       return {
         name: l.def.name, world: l.def.world, best: Math.round(this.save.best[l.def.id] ?? 0),
-        gems: this.save.gems[l.def.id] ?? 0, gemTotal: l.gemCount, done: !!this.save.done[l.def.id], css: pal.css, css2: pal.css2,
+        gems: this.save.gems[l.def.id] ?? 0, gemTotal: l.gemCount, done: !!this.save.done[l.def.id], stars: this.save.stars[l.def.id] ?? 0, css: pal.css, css2: pal.css2,
       };
     }));
   }
@@ -118,6 +123,9 @@ export class Game {
     this.coast = 0;
     this.nextHint = 0;
     this.ui.hideCallout();
+    this.ui.hideBanner();
+    this.setHype(0);
+    this.prevBest = this.save.best[this.levels[this.idx].def.id] ?? 0;
     this.input.clear();
     this.view.resetRun();
     this.attempts++;
@@ -125,8 +133,32 @@ export class Game {
     this.save.attempts[id] = (this.save.attempts[id] ?? 0) + 1;
     this.ui.setAttempt(this.attempts);
     this.ui.setHud(0, 0, this.levels[this.idx].gemCount);
-    this.audio.startMusic(this.levels[this.idx].def.world);
+    this.audio.startMusic(this.levels[this.idx].def.world, this.levels[this.idx].def.bpm);
     this.mode = 'play';
+  }
+
+  private setHype(h: number): void {
+    this.hype = h;
+    this.view.setHype(h);
+    this.audio.hype = h;
+    this.ui.setHype(h);
+  }
+
+  /** Rewards for progress within a run: halfway, then beating the stored record. */
+  private milestones(): void {
+    const pct = (this.sim.s.z / this.levels[this.idx].finishZ) * 100;
+    if (this.hype < 1 && pct >= 50) {
+      this.setHype(1);
+      this.view.milestone('half', this.pose(1));
+      this.audio.milestone('half');
+      this.ui.showBanner(this.ui.t('half'));
+    }
+    if (this.hype < 2 && this.prevBest >= 5 && this.prevBest < 100 && pct > this.prevBest + 0.5) {
+      this.setHype(2);
+      this.view.milestone('record', this.pose(1));
+      this.audio.milestone('record');
+      this.ui.showBanner(this.ui.t('record'));
+    }
   }
 
   private pause(): void {
@@ -167,17 +199,29 @@ export class Game {
         this.audio.stopMusic();
         this.input.clear();
         const pct = Math.min(99, Math.floor((s.z / level.finishZ) * 100));
-        if (pct > (this.save.best[id] ?? 0)) { this.save.best[id] = pct; storeSave(this.save); }
+        if (pct > (this.save.best[id] ?? 0)) {
+          this.save.best[id] = pct;
+          storeSave(this.save);
+          if (pct >= 5) { this.ui.showBanner(`${this.ui.t('record')} ${pct}%`, true); this.timer = 1.25; }
+        }
       } else if (e.type === 'finish') {
         this.mode = 'done';
         this.timer = 1.1;
         this.save.best[id] = 100;
         this.save.done[id] = true;
         this.save.gems[id] = Math.max(this.save.gems[id] ?? 0, this.sim.collected.size);
+        this.save.stars[id] = Math.max(this.save.stars[id] ?? 0, this.stars());
+        this.fire = 0;
+        this.ui.hideBanner();
         storeSave(this.save);
       }
     }
     this.sim.events.length = 0;
+  }
+
+  private stars(): number {
+    const got = this.sim.collected.size, total = this.levels[this.idx].gemCount;
+    return 1 + (got * 2 >= total ? 1 : 0) + (got >= total ? 1 : 0);
   }
 
   private loop = (now: number): void => {
@@ -195,6 +239,7 @@ export class Game {
         this.acc -= CFG.dt;
         this.drainEvents();
       }
+      if (this.mode === 'play') this.milestones();
       const def = this.levels[this.idx].def;
       if (def.hints && !this.save.done[def.id]) {
         const row = this.sim.s.z / CFG.tileL;
@@ -212,11 +257,13 @@ export class Game {
     } else if (this.mode === 'done') {
       this.timer -= dt;
       this.coast += this.sim.s.speed * dt * Math.max(0.15, this.timer);
+      this.fire -= dt;
+      if (this.fire <= 0) { this.fire = 0.22 + Math.random() * 0.2; this.view.firework(); }
       if (this.timer <= 0 && !this.doneShown) {
         this.doneShown = true;
         this.audio.stopMusic();
         this.ui.showDone({
-          attempts: this.attempts, gems: this.sim.collected.size, gemTotal: this.levels[this.idx].gemCount,
+          attempts: this.attempts, gems: this.sim.collected.size, gemTotal: this.levels[this.idx].gemCount, stars: this.stars(),
           hasNext: this.idx < this.levels.length - 1,
         });
       }
@@ -225,7 +272,7 @@ export class Game {
     this.audio.update();
     const playing = this.mode === 'play';
     const t = this.mode === 'menu' ? this.clock : this.sim.s.time;
-    const phase = (t * CFG.bpm / 60) % 1;
+    const phase = (t * this.levels[this.idx].def.bpm / 60) % 1;
     const beat = this.mode === 'dead' ? 0 : Math.exp(-phase * 4.5);
     const alpha = playing ? this.acc / CFG.dt : 1;
     this.view.frame(dt, this.pose(alpha), this.clock, beat, this.mode === 'menu');

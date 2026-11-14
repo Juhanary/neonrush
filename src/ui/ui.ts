@@ -3,7 +3,7 @@ import { translate, type Key, type Lang } from './i18n';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
-export interface LevelCard { name: string; world: number; best: number; gems: number; gemTotal: number; done: boolean; css: string; css2: string }
+export interface LevelCard { name: string; world: number; best: number; gems: number; gemTotal: number; done: boolean; stars: number; css: string; css2: string }
 
 export interface UiHandlers {
   play(i: number): void; pause(): void; resume(): void; restart(): void; menu(): void; next(): void; mute(): boolean; lang(): void;
@@ -13,7 +13,7 @@ export interface UiHandlers {
 export class Ui {
   private hud = $('hud'); private menu = $('menu'); private pauseP = $('pause'); private doneP = $('done');
   private barFill = $('bar').querySelector('i') as HTMLElement;
-  private callout = $('callout'); private pct = $('pct'); private attempt = $('attempt'); private gems = $('gems'); private hint = $('hint');
+  private callout = $('callout'); private banner = $('banner'); private bar = $('bar'); private pct = $('pct'); private attempt = $('attempt'); private gems = $('gems'); private hint = $('hint');
   private stick = $('stick'); private nub = this.stick.querySelector('i') as HTMLElement;
   private lastPct = -1; private lastGems = ''; private hintTimer = 0;
   private lang: Lang = 'en'; private muted = false; private attemptN = 1;
@@ -72,7 +72,7 @@ export class Ui {
       b.style.setProperty('--c2', c.css2);
       b.innerHTML = `<span class="go">${c.done ? '&#9733;' : '&#9654;'}</span><small>${this.t('world')} ${c.world + 1}</small><strong>${c.name}</strong>
         <div class="meter"><i style="width:${c.best}%"></i></div>
-        <div class="meta"><span>${c.best}%</span><span>&#9670; ${c.gems}/${c.gemTotal}</span></div>`;
+        <div class="meta"><span>${c.best}%</span><span class="st">${'&#9733;'.repeat(c.stars)}<u>${'&#9733;'.repeat(3 - c.stars)}</u></span><span>&#9670; ${c.gems}/${c.gemTotal}</span></div>`;
       b.addEventListener('click', () => this.h.play(i));
       box.appendChild(b);
     });
@@ -84,7 +84,8 @@ export class Ui {
     this.menu.hidden = true; this.pauseP.hidden = true; this.doneP.hidden = true; this.hud.hidden = false;
   }
   showPause(): void { this.pauseP.hidden = false; }
-  showDone(stats: { attempts: number; gems: number; gemTotal: number; hasNext: boolean }): void {
+  showDone(stats: { attempts: number; gems: number; gemTotal: number; stars: number; hasNext: boolean }): void {
+    document.querySelectorAll('#stars span').forEach((el, i) => el.classList.toggle('on', i < stats.stars));
     $('doneStats').innerHTML = `${this.t('attempts')} <b>${stats.attempts}</b><br>${this.t('gems')} <b>&#9670; ${stats.gems}/${stats.gemTotal}</b>`;
     $('nextBtn').hidden = !stats.hasNext;
     this.doneP.hidden = false; this.hud.hidden = true;
@@ -120,6 +121,21 @@ export class Ui {
     c.classList.add('on');
   }
   hideCallout(): void { this.callout.classList.remove('on'); }
+
+  /** Big celebratory text. `hold` keeps it on screen until hideBanner(). */
+  showBanner(text: string, hold = false): void {
+    const b = this.banner;
+    b.textContent = text;
+    b.classList.remove('on', 'hold');
+    void b.offsetWidth;
+    b.classList.add(hold ? 'hold' : 'on');
+  }
+  hideBanner(): void { this.banner.classList.remove('on', 'hold'); }
+  /** Progress bar mood: 0 normal, 1 past halfway, 2 record run. */
+  setHype(h: number): void {
+    this.bar.classList.toggle('half', h === 1);
+    this.bar.classList.toggle('rec', h >= 2);
+  }
 
   setStick(active: boolean, x: number, y: number, dx: number): void {
     this.stick.classList.toggle('on', active);

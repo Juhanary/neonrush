@@ -52,6 +52,12 @@ export class View {
   private slowFrames = 0;
   private frames = 0;
   private tmp = new THREE.Vector3();
+  private hype = 0;
+  private hv = 0;
+  private rv = 0;
+  private dots = 0;
+  private rainbow = new THREE.Color();
+  private rainbowDim = new THREE.Color();
   shipId = DEFAULT_SHIP;
 
   constructor(canvas: HTMLCanvasElement, private flashEl: HTMLElement) {
@@ -105,7 +111,46 @@ export class View {
     this.waves.clear();
     for (const r of this.ribbons) r.reset();
     this.shake = 0; this.squash = 0; this.kick = 0; this.roll = 0; this.camX = 0; this.camY = 0;
+    this.hype = 0; this.hv = 0; this.rv = 0;
     this.flash = Math.max(this.flash, 0.25);
+  }
+
+  /** 0 normal, 1 past halfway, 2 record run. The view eases towards it. */
+  setHype(h: number): void { this.hype = h; }
+
+  /** One-off celebration when a milestone is passed. */
+  milestone(kind: 'half' | 'record', p: Pose): void {
+    const P = this.particles, c = this.c;
+    const x = p.x, y = p.y + 0.6, z = -p.z, fwd = -p.speed;
+    if (kind === 'half') {
+      P.burst(x, y, z, 70, 18, 0.9, 0.4, c.accent, { vz: fwd * 0.9, drag: 1.5 });
+      this.waves.spawn(x, y, z, c.accent, 12, 0.6, true);
+      this.waves.spawn(x, p.y + 0.05, z, c.edge, 9, 0.5);
+      this.flash = Math.max(this.flash, 0.28);
+      this.kick = Math.max(this.kick, 0.7);
+    } else {
+      const col = new THREE.Color();
+      for (let i = 0; i < 6; i++) {
+        col.setHSL(i / 6, 1, 0.6).multiplyScalar(1.6);
+        P.burst(x, y, z, 34, 22, 1.2, 0.42, col, { vz: fwd * 0.95, drag: 1.4, grav: 5, up: 5 });
+      }
+      this.waves.spawn(x, y, z, c.white, 16, 0.7, true);
+      this.waves.spawn(x, y, z - 2, c.accent, 12, 0.6, true);
+      this.waves.spawn(x, p.y + 0.05, z, c.edge, 12, 0.6);
+      this.flash = Math.max(this.flash, 0.5);
+      this.kick = 1;
+      this.shake = Math.max(this.shake, 0.3);
+    }
+  }
+
+  /** A firework somewhere ahead of the camera (level complete). */
+  firework(): void {
+    const cam = this.camera.position;
+    const col = new THREE.Color().setHSL(Math.random(), 1, 0.6).multiplyScalar(1.7);
+    const x = cam.x + (Math.random() - 0.5) * 34, y = cam.y + 1 + Math.random() * 12, z = cam.z - 22 - Math.random() * 26;
+    this.particles.burst(x, y, z, 80, 16, 1.3, 0.5, col, { drag: 1.8, grav: 5 });
+    this.particles.burst(x, y, z, 14, 5, 0.5, 0.9, this.c.white, { drag: 3 });
+    this.waves.spawn(x, y, z, col, 6, 0.5, true);
   }
 
   onEvent(e: SimEvent, p: Pose): void {
@@ -168,6 +213,12 @@ export class View {
     const ship = this.ship, track = this.track, bg = this.bg;
     if (!ship || !track || !bg) return;
     const k = (r: number) => 1 - Math.exp(-dt * r);
+    this.hv += ((this.hype >= 1 ? 1 : 0) - this.hv) * k(3);
+    this.rv += ((this.hype >= 2 ? 1 : 0) - this.rv) * k(3);
+    const hv = this.hv, rv = this.rv;
+    this.rainbow.setHSL((time * 0.7) % 1, 1, 0.58).multiplyScalar(1.5);
+    this.rainbowDim.copy(this.rainbow).multiplyScalar(0.45);
+    this.bloom.strength = 0.5 + 0.1 * hv + 0.12 * rv;
 
     // ---- ship pose -------------------------------------------------------
     const hover = 0.55 + (p.grounded ? Math.sin(time * 3.2) * 0.06 : 0);
@@ -189,16 +240,28 @@ export class View {
       const w = this.tmp.copy(ship.thrusters[i]).applyMatrix4(this.pivot.matrixWorld);
       const rb = this.ribbons[i];
       rb.mesh.visible = p.alive && !menu;
-      if (p.alive) rb.update(w, p.boosting ? 0.2 : 0.11, p.boosting ? 1.5 : 0.7, 0.9);
+      rb.setColor(rv > 0.5 ? this.rainbow : this.c.trail);
+      if (p.alive) rb.update(w, (p.boosting ? 0.2 : 0.11) * (1 + 0.5 * hv + 0.5 * rv), (p.boosting ? 1.5 : 0.7) * (1 + 0.4 * hv + 0.5 * rv), 0.9);
       if (p.alive) {
         for (let n = Math.floor(this.exhaust); n > 0; n--) {
           this.particles.spawn(w.x, w.y, w.z,
             (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, 5 + Math.random() * 7,
-            0.16 + Math.random() * 0.2, p.boosting ? 0.26 : 0.15, p.boosting ? this.c.hot : this.c.exhaust, 1);
+            0.16 + Math.random() * 0.2, p.boosting ? 0.26 : 0.15, p.boosting ? this.c.hot : rv > 0.5 ? this.rainbowDim : this.c.exhaust, 1);
         }
       }
     }
     this.exhaust -= Math.floor(this.exhaust);
+
+    // speed streaks past the road once the run heats up
+    if (!menu && p.alive && hv > 0.05) {
+      this.dots += dt * (45 * hv + 70 * rv);
+      for (let n = Math.floor(this.dots); n > 0; n--) {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        this.particles.spawn(sx + side * (7.5 + Math.random() * 14), -2 + Math.random() * 13, sz - 70 - Math.random() * 30,
+          0, 0, 55 + Math.random() * 30, 1.1, 0.22 + Math.random() * 0.2, rv > 0.5 ? this.rainbow : this.c.edge, 0);
+      }
+      this.dots -= Math.floor(this.dots);
+    }
 
     // landing marker while airborne
     const ground = this.level!.heightAt(p.x, p.z);
@@ -233,8 +296,8 @@ export class View {
     }
 
     // ---- world -----------------------------------------------------------
-    track.update(dt, time, beat, p.z);
-    bg.update(dt, time, beat, cam.position);
+    track.update(dt, time, beat, p.z, hv, rv);
+    bg.update(dt, time, beat, cam.position, hv, rv);
     this.particles.update(dt);
     this.waves.update(dt);
 

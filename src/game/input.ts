@@ -24,7 +24,10 @@ export class Input {
       e.preventDefault();
       this.tapped = true;
       const mouse = e.pointerType === 'mouse';
-      if (!mouse && e.clientX < window.innerWidth * 0.5 && this.steerId < 0) {
+      // A new touch on the left always takes over steering. If the browser ever drops a pointerup
+      // (system gestures, app switches), the old id would otherwise block the stick for good.
+      if (!mouse && e.clientX < window.innerWidth * 0.5) {
+        this.jumpIds.delete(this.steerId);
         this.steerId = e.pointerId;
         this.originX = e.clientX;
         this.touchSteer = 0;
@@ -53,8 +56,13 @@ export class Input {
       }
       this.jumpIds.delete(e.pointerId);
     };
-    surface.addEventListener('pointerup', up);
-    surface.addEventListener('pointercancel', up);
+    // window-level listeners: releases are seen even if the finger ends over a menu or outside the page
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    const allUp = (e: TouchEvent) => { if (e.touches.length === 0) this.release(); };
+    window.addEventListener('touchend', allUp);
+    window.addEventListener('touchcancel', allUp);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.release(); });
     surface.addEventListener('contextmenu', (e) => e.preventDefault());
 
     window.addEventListener('keydown', (e) => {
@@ -80,6 +88,14 @@ export class Input {
     const jumpPressed = this.queued;
     this.queued = false;
     return { steer, jumpPressed, jumpHeld: this.keyJump || this.jumpIds.size > 0 };
+  }
+
+  /** Forget every held touch. */
+  release(): void {
+    if (this.steerId >= 0) this.onStick?.(false, 0, 0, 0);
+    this.steerId = -1;
+    this.touchSteer = 0;
+    this.jumpIds.clear();
   }
 
   clear(): void {

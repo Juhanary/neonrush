@@ -75,3 +75,29 @@ h2 { margin: 0 0 6px; font-size: clamp(24px, 6vw, 48px); font-weight: 900; font-
 #callout.on { animation: callout 1.5s ease-out both; }
 @keyframes callout { 0% { opacity: 0; transform: scale(1.7); } 12% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: scale(.96); } }
 .row { flex-wrap: wrap; justify-content: center; }
+#banner { position: fixed; left: 0; right: 0; top: 34%; text-align: center; pointer-events: none; opacity: 0; padding: 0 16px;
+  font-weight: 900; font-style: italic; font-size: clamp(26px, 7.5vw, 64px); letter-spacing: .05em; line-height: 1.05; color: #fff;
+  text-shadow: 0 0 10px #ffd23a, 0 0 34px #ff8a00, 3px 3px 0 #ff3ad0; }
+#banner.on { animation: banner 1.3s cubic-bezier(.2, 1.4, .4, 1) both; }
+#banner.hold { animation: bannerIn .35s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes banner { 0% { opacity: 0; transform: scale(2.4) rotate(-4deg); } 16% { opacity: 1; transform: scale(1) rotate(0); } 78% { opacity: 1; } 100% { opacity: 0; transform: scale(1.15); } }
+@keyframes bannerIn { 0% { opacity: 0; transform: scale(2.4) rotate(-4deg); } 100% { opacity: 1; transform: none; } }
+#bar.half { box-shadow: 0 0 20px var(--a), 0 0 6px #fff; }
+#bar.rec { border-color: #ffd23a; box-shadow: 0 0 22px #ffb400, 0 0 8px #fff; }
+#bar.rec i { background: linear-gradient(90deg, #ff3ad0, #ffd23a, #3af0ff, #9dff3a, #ff3ad0); background-size: 200% 100%; animation: slide 1s linear infinite; }
+@keyframes slide { to { background-position: -200% 0; } }
+#stars { display: flex; gap: 10px; font-size: clamp(34px, 9vw, 60px); line-height: 1; }
+#stars span { color: rgba(255, 255, 255, .16); }
+#stars span.on { color: #ffd23a; text-shadow: 0 0 14px #ffb400, 0 0 40px #ff8a00; animation: star .5s cubic-bezier(.2, 1.8, .4, 1) both; }
+#stars span.on:nth-child(2) { animation-delay: .25s; } #stars span.on:nth-child(3) { animation-delay: .5s; }
+@keyframes star { from { opacity: 0; transform: scale(3) rotate(-90deg); } to { opacity: 1; transform: none; } }
+.note2 { margin: 0; font-size: 9px; letter-spacing: .2em; opacity: .75; }
+.card .st { color: #ffd23a; letter-spacing: .1em; text-shadow: 0 0 8px #ffb400; }
+.card .st u { text-decoration: none; color: rgba(255, 255, 255, .25); text-shadow: none; }
+@media (max-height: 380px) { .note2 { display: none; } #stars { font-size: 30px; } .stats { line-height: 1.5; margin: 0; } h2 { margin: 0; } }
+@media (max-height: 480px) {
+  .panel .col { flex-direction: row; flex-wrap: wrap; justify-content: center; width: auto; }
+  .big { padding: 11px 18px; font-size: 14px; }
+  .stats br { display: none; } .stats b { margin-right: 14px; font-size: 17px; }
+  #stars { font-size: 38px; }
+}

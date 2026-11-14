@@ -13,6 +13,8 @@ export interface LevelDef {
   name: string;
   world: number;
   speed: number;
+  /** Music tempo; visuals pulse on this beat. */
+  bpm: number;
   rows: string[];
   /** Tutorial callouts: shown when the ship reaches `row` (may be fractional). */
   hints?: { row: number; key: string }[];

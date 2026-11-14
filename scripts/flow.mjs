@@ -34,7 +34,7 @@ for (let i = 0; i < 60 && !died; i++) { await sleep(50); died = (await st()).mod
 await sleep(120);
 await p.screenshot({ path: `${out}/death.png` });
 res.died = await st();
-await sleep(900);
+for (let i = 0; i < 60; i++) { await sleep(100); const q = await st(); if (q.mode === 'play' && q.attempts >= 2) break; }
 res.respawned = await st();
 // jump to just before the finish line
 await p.evaluate(() => { const g = window.__game; g.sim.s.z = g.sim.level.finishZ - 30; g.sim.s.x = 0; g.sim.s.y = 0; g.sim.s.vy = 0; g.sim.s.grounded = true; });

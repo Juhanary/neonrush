@@ -3,13 +3,14 @@ export interface Save {
   best: Record<string, number>;
   gems: Record<string, number>;
   done: Record<string, boolean>;
+  stars: Record<string, number>;
   attempts: Record<string, number>;
   muted: boolean;
   lang?: 'en' | 'fi';
 }
 
 const KEY = 'neonrush.save.v1';
-const blank = (): Save => ({ best: {}, gems: {}, done: {}, attempts: {}, muted: false });
+const blank = (): Save => ({ best: {}, gems: {}, done: {}, stars: {}, attempts: {}, muted: false });
 
 export function loadSave(): Save {
   try {

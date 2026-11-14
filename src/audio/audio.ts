@@ -1,15 +1,15 @@
 import type { SimEvent } from '../core/sim';
-import { CFG } from '../core/config';
 
-const STEP = 60 / CFG.bpm / 4; // sixteenth note
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
-interface Song { roots: number[]; chords: number[][]; lead: OscillatorType }
+type Style = 'house' | 'breaks' | 'halftime';
+interface Song { style: Style; roots: number[]; chords: number[][]; lead: OscillatorType }
 const MIN = [0, 3, 7], MAJ = [0, 4, 7];
+/** One song per world, each in its own genre, key and tempo (tempo comes from the level). */
 const SONGS: Song[] = [
-  { roots: [45, 41, 48, 43], chords: [MIN, MAJ, MAJ, MAJ], lead: 'square' },
-  { roots: [50, 46, 41, 48], chords: [MIN, MAJ, MAJ, MAJ], lead: 'sawtooth' },
-  { roots: [40, 48, 50, 47], chords: [MIN, MAJ, MAJ, MIN], lead: 'triangle' },
+  { style: 'house', roots: [45, 41, 48, 43], chords: [MIN, MAJ, MAJ, MAJ], lead: 'square' },      // A minor arpeggio house
+  { style: 'breaks', roots: [50, 47, 43, 45], chords: [MAJ, MIN, MAJ, MAJ], lead: 'sawtooth' },   // D major supersaw breakbeat
+  { style: 'halftime', roots: [40, 40, 41, 38], chords: [MIN, MIN, MAJ, MIN], lead: 'triangle' }, // E phrygian half-time wobble
 ];
 
 /** Fully synthesised music and effects (no audio files to load). */
@@ -24,6 +24,9 @@ export class GameAudio {
   private step = 0;
   private nextTime = 0;
   private song = SONGS[0];
+  private stepDur = 0.125;
+  /** 0 normal, 1 past halfway, 2 record run: each level adds instrument layers. */
+  hype = 0;
   private gemCombo = 0;
   private lastGem = 0;
   muted = false;
@@ -42,7 +45,7 @@ export class GameAudio {
       this.master.connect(comp).connect(ctx.destination);
       this.music = ctx.createGain(); this.music.gain.value = 0; this.music.connect(this.master);
       this.sfx = ctx.createGain(); this.sfx.gain.value = 0.9; this.sfx.connect(this.master);
-      this.delay = ctx.createDelay(1); this.delay.delayTime.value = STEP * 3;
+      this.delay = ctx.createDelay(1); this.delay.delayTime.value = 0.375;
       const fb = ctx.createGain(); fb.gain.value = 0.32;
       this.delay.connect(fb).connect(this.delay);
       this.delay.connect(this.music);
@@ -64,9 +67,12 @@ export class GameAudio {
   suspend(): void { void this.ctx?.suspend().catch(() => {}); }
   resume(): void { void this.ctx?.resume().catch(() => {}); }
 
-  startMusic(world: number): void {
+  startMusic(world: number, bpm: number): void {
+    this.hype = 0;
     if (!this.ctx) return;
     this.song = SONGS[world % SONGS.length];
+    this.stepDur = 60 / bpm / 4;
+    this.delay.delayTime.setValueAtTime(this.stepDur * 3, this.ctx.currentTime);
     this.playing = true;
     this.step = 0;
     this.gemCombo = 0;
@@ -91,12 +97,12 @@ export class GameAudio {
     if (!ctx || !this.playing || ctx.state !== 'running') return;
     const now = ctx.currentTime;
     if (this.nextTime < now - 0.25) {
-      const skip = Math.ceil((now - this.nextTime) / STEP);
-      this.step += skip; this.nextTime += skip * STEP;
+      const skip = Math.ceil((now - this.nextTime) / this.stepDur);
+      this.step += skip; this.nextTime += skip * this.stepDur;
     }
     while (this.nextTime < now + 0.14) {
       this.schedule(this.step, this.nextTime);
-      this.step++; this.nextTime += STEP;
+      this.step++; this.nextTime += this.stepDur;
     }
   }
 
@@ -136,23 +142,121 @@ export class GameAudio {
     s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
   }
 
+  private kick(t: number, peak = 0.95): void {
+    this.tone(this.music, 'sine', 150, 42, t, 0.22, peak);
+    this.tone(this.music, 'triangle', 320, 90, t, 0.05, peak * 0.35); // click that survives phone speakers
+  }
+  private snare(t: number, peak = 0.4): void {
+    this.hiss(this.music, t, 0.16, peak, 'bandpass', 1900);
+    this.tone(this.music, 'triangle', 230, 120, t, 0.09, peak * 0.6);
+  }
+  private hat(t: number, peak: number, open = false): void {
+    this.hiss(this.music, t, open ? 0.16 : 0.035, peak, 'highpass', 7500);
+  }
+  /** Three detuned saws: the wide trance lead. */
+  private supersaw(dest: AudioNode, note: number, t: number, dur: number, peak: number): void {
+    for (const d of [-0.12, 0, 0.12]) this.tone(dest, 'sawtooth', mtof(note + d), mtof(note + d), t, dur, peak / 2.2, 3400);
+  }
+  /** Saw bass through a resonant filter swept by an LFO. */
+  private wobble(note: number, t: number, dur: number, rateHz: number, peak: number): void {
+    const ctx = this.ctx!;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.01);
+    g.gain.setValueAtTime(peak, t + dur - 0.04);
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.Q.value = 9; f.frequency.value = 700;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = rateHz;
+    const depth = ctx.createGain();
+    depth.gain.value = 560;
+    lfo.connect(depth).connect(f.frequency);
+    for (const [type, mul] of [['sawtooth', 1], ['square', 2]] as [OscillatorType, number][]) {
+      const o = ctx.createOscillator();
+      o.type = type; o.frequency.value = mtof(note) * mul;
+      o.connect(f);
+      o.start(t); o.stop(t + dur + 0.02);
+    }
+    f.connect(g).connect(this.music);
+    lfo.start(t); lfo.stop(t + dur + 0.02);
+  }
+  private echo(): GainNode {
+    const g = this.ctx!.createGain();
+    g.connect(this.music); g.connect(this.delay);
+    return g;
+  }
+
   private schedule(step: number, t: number): void {
     const s = step % 16;
     const bar = Math.floor(step / 16);
     const ci = bar % 4;
     const root = this.song.roots[ci], chord = this.song.chords[ci];
-    const intro = bar < 1;
-    if (s % 4 === 0) { this.tone(this.music, 'sine', 150, 42, t, 0.22, 0.95); }
-    if (!intro && (s === 4 || s === 12)) this.hiss(this.music, t, 0.14, 0.3, 'bandpass', 1700);
-    if (s % 2 === 0) this.hiss(this.music, t, s % 4 === 2 ? 0.07 : 0.03, s % 4 === 2 ? 0.16 : 0.07, 'highpass', 7500);
-    if (s % 4 !== 0) this.tone(this.music, 'sawtooth', mtof(root - 12), mtof(root - 12), t, 0.12, 0.3, 700);
-    const pat = [0, 1, 2, 1, 0, 2, 1, 2];
-    const note = root + 24 + chord[pat[s % 8]] + (s >= 8 && bar % 2 === 1 ? 12 : 0);
-    const g = this.ctx!.createGain();
-    g.gain.value = 1;
-    g.connect(this.music); g.connect(this.delay);
-    this.tone(g, this.song.lead, mtof(note), mtof(note), t, 0.11, intro ? 0.05 : 0.085, 2600);
-    if (!intro && s === 0) for (const iv of chord) this.tone(this.music, 'triangle', mtof(root + 12 + iv), mtof(root + 12 + iv), t, 1.6, 0.05);
+    const H = this.hype;
+    const sd = this.stepDur;
+
+    if (this.song.style === 'house') {
+      const intro = bar < 1;
+      if (s % 4 === 0) this.kick(t);
+      if (!intro && (s === 4 || s === 12)) this.snare(t, 0.3);
+      if (s % 2 === 0) this.hat(t, s % 4 === 2 ? 0.16 : 0.07, s % 4 === 2);
+      if (H >= 1 && s % 2 === 1) this.hat(t, 0.08);
+      if (s % 4 !== 0) this.tone(this.music, 'sawtooth', mtof(root - 12), mtof(root - 12), t, 0.12, 0.3, 700);
+      const pat = [0, 1, 2, 1, 0, 2, 1, 2];
+      const note = root + 24 + chord[pat[s % 8]] + (s >= 8 && bar % 2 === 1 ? 12 : 0);
+      const e = this.echo();
+      this.tone(e, this.song.lead, mtof(note), mtof(note), t, 0.11, intro ? 0.05 : 0.085, 2600);
+      if (H >= 1) this.tone(e, 'triangle', mtof(note + 12), mtof(note + 12), t, 0.09, 0.05);
+      if (!intro && s === 0) for (const iv of chord) this.tone(this.music, 'triangle', mtof(root + 12 + iv), mtof(root + 12 + iv), t, 1.6, 0.05);
+      if (H >= 2 && s % 4 === 2) for (const iv of chord) this.supersaw(this.music, root + 24 + iv, t, sd * 1.5, 0.07);
+    } else if (this.song.style === 'breaks') {
+      if (s === 0 || s === 6 || s === 10 || (bar % 4 === 3 && s === 14)) this.kick(t, 0.9);
+      if (s === 4 || s === 12) this.snare(t, 0.42);
+      this.hat(t, s % 2 === 0 ? 0.11 : 0.05, H >= 1 && s % 4 === 2);
+      if (s % 4 !== 0) this.tone(this.music, 'sawtooth', mtof(root - 12), mtof(root), t, sd * 0.9, 0.3, 900);
+      const rhythm = [0, 3, 6, 8, 11, 14];
+      const i = rhythm.indexOf(s);
+      if (i >= 0) {
+        const tones = bar % 2 === 0 ? [0, 2, 1, 2, 0, 1] : [2, 1, 2, 0, 1, 2];
+        const up = bar % 2 === 1 && i >= 3 ? 12 : 0;
+        this.supersaw(this.echo(), root + 24 + chord[tones[i]] + up, t, sd * 2.4, 0.2);
+      }
+      if (s === 0 || s === 8) for (const iv of chord) this.tone(this.music, 'sawtooth', mtof(root + 12 + iv), mtof(root + 12 + iv), t, sd * 3, 0.045, 1800);
+      if (H >= 1 && (s === 4 || s === 12)) this.hiss(this.music, t, 0.2, 0.16, 'highpass', 4000);
+      if (H >= 2) { const n = root + 36 + chord[s % 3]; this.tone(this.echo(), 'square', mtof(n), mtof(n), t, sd * 0.8, 0.045, 5000); }
+    } else {
+      if (s === 0 || s === 10 || (bar % 2 === 1 && s === 3)) this.kick(t, 1);
+      if (s === 8) { this.snare(t, 0.6); this.hiss(this.music, t, 0.3, 0.2, 'lowpass', 3000); }
+      if (s === 2 || s === 6 || s === 11 || s === 14 || s === 15) this.hat(t, 0.1);
+      if (H >= 1) this.hat(t, s >= 12 ? 0.09 : 0.04);
+      const beatHz = 1 / (sd * 4);
+      const rate = [2, 4, 3, 6][bar % 4] * beatHz;
+      if (s === 0) this.wobble(root, t, sd * 7.5, rate, 0.34);
+      if (s === 8) this.wobble(root + (bar % 2 ? 12 : 0), t, sd * 7.5, rate * (bar % 4 === 3 ? 2 : 1), 0.3);
+      if (H >= 1 && s === 0) this.wobble(root + 12, t, sd * 15, rate / 2, 0.12);
+      const phr = [0, 1, 3, 7, 8, 12];
+      if (s === 0 || s === 3 || s === 7 || s === 10 || s === 13) {
+        const n = this.song.roots[0] + 36 + phr[(s * 7 + bar * 3) % 6];
+        this.tone(this.echo(), 'triangle', mtof(n), mtof(n), t, 0.2, 0.12);
+      }
+      if (H >= 2 && s === 0 && bar % 2 === 0) this.tone(this.music, 'sawtooth', mtof(root + 24), mtof(root + 36), t, sd * 16, 0.06, 2400);
+    }
+  }
+
+  /** Stingers for passing halfway and for beating the level record. */
+  milestone(kind: 'half' | 'record'): void {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime, d = this.sfx;
+    const base = this.song.roots[0] + 36;
+    if (kind === 'half') {
+      [0, 7, 12].forEach((iv, i) => this.tone(d, 'triangle', mtof(base + iv), mtof(base + iv), t + i * 0.06, 0.25, 0.14));
+      this.hiss(d, t, 0.5, 0.14, 'bandpass', 800, 7000);
+    } else {
+      [0, 4, 7, 12, 16, 24].forEach((iv, i) => this.supersaw(d, base + iv, t + i * 0.055, 0.35, 0.2));
+      this.hiss(d, t, 0.9, 0.2, 'highpass', 3000, 9000);
+      this.tone(d, 'sine', 90, 45, t, 0.4, 0.5);
+    }
   }
 
   onEvent(e: SimEvent): void {
