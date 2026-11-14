@@ -38,9 +38,15 @@ export const CFG = {
   /** Half width of a rail tile ('|'). */
   railHalf: 0.5,
   /** Gravity-flip zones: upward pull, downward kick per tap, and the height where the ship is lost. */
-  flipGravity: 55,
-  flipThrust: 10,
+  flipGravity: 26,
+  flipThrust: 8.5,
   flipCeil: 9.5,
+  /** Inside a zone the ship slows to this fraction of the track speed, braking hard on the way in. */
+  flipSpeed: 0.55,
+  flipBrake: 45,
+
+  /** Practice mode: minimum rows between two checkpoints. */
+  checkpointGap: 6,
 
   /** Fixed simulation step. */
   dt: 1 / 120,

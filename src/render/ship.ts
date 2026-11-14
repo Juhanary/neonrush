@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import type { Palette } from './palette';
-
 /**
- * A ship's looks only. Movement lives in core/sim.ts and never touches this file,
- * so new bodies are added by registering another factory in SHIPS.
+ * A ship's looks only. Movement lives in core/sim.ts and never touches this file.
+ * A ship never takes colours from the track: it looks the same in every world.
+ * Each craft is assembled from parts (hull, pods, wings, fins, canopy) painted from one Paint,
+ * so later customisation can swap a part builder or a paint without touching the rest.
  */
 export interface ShipVisual {
   root: THREE.Group;
@@ -11,10 +11,26 @@ export interface ShipVisual {
   thrusters: THREE.Vector3[];
   /** power: 0 idle .. 1 cruising .. 2 boosting */
   update(time: number, power: number): void;
+  /** Colours of everything the ship emits: trail ribbons, exhaust, jump and landing sparks. */
+  trail: THREE.Color;
+  exhaust: THREE.Color;
   dispose(): void;
 }
 
-export type ShipFactory = (pal: Palette) => ShipVisual;
+export type ShipFactory = () => ShipVisual;
+
+/** Every colour on a ship. Hull colours stay under the bloom threshold so the facets and outlines stay sharp. */
+export interface Paint {
+  hull: number; panel: number; canopy: number;
+  /** Outline drawn on every facet edge. */
+  edge: number;
+  /** Light strips and fin tips. */
+  accent: number;
+  /** Thruster core, glow and trail. */
+  engine: number;
+}
+
+export const STEALTH: Paint = { hull: 0x171c30, panel: 0x0c0f1c, canopy: 0x1f5cff, edge: 0xe6eeff, accent: 0x6aa8ff, engine: 0x4f8dff };
 
 function glowTexture(): THREE.Texture {
   const c = document.createElement('canvas');
@@ -47,103 +63,120 @@ function tris(points: number[][], faces: number[][], base: THREE.Color): THREE.B
     a.fromArray(v, i); b.fromArray(v, i + 3); c.fromArray(v, i + 6);
     n.copy(b).sub(a).cross(c.sub(a)).normalize();
     if (n.y < 0 && Math.abs(n.y) > 0.5) n.negate(); // faces are drawn double sided: light the upper side
-    const shade = 0.34 + 0.5 * Math.max(0, n.dot(light)) + 0.12 * Math.max(0, n.y);
+    const shade = 0.24 + 0.72 * Math.max(0, n.dot(light)) + 0.1 * Math.max(0, n.y); // wide range: every facet reads
     for (let k = 0; k < 3; k++) col.push(base.r * shade, base.g * shade, base.b * shade);
   }
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return g;
 }
 
-/** Default craft: a low arrowhead hull with swept wings and twin thrusters. */
-const arrowhead: ShipFactory = (pal) => {
+/** Default craft: a dark dart hull between two engine pods, with canted fins. */
+function dart(paint: Paint): ShipVisual {
   const root = new THREE.Group();
   const trash: { dispose(): void }[] = [];
-  const edgeCol = new THREE.Color(pal.edge).multiplyScalar(1.25);
-  const hullCol = new THREE.Color(0xe8ecff);
-  const wingCol = new THREE.Color(pal.edge).lerp(new THREE.Color(0xffffff), 0.35);
-  const lineMat = new THREE.LineBasicMaterial({ color: edgeCol });
-  const hullMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
-  trash.push(lineMat, hullMat);
-  const outlined = (geo: THREE.BufferGeometry, mat: THREE.Material = hullMat) => {
-    const m = new THREE.Mesh(geo, mat);
-    const e = new THREE.EdgesGeometry(geo, 20);
-    m.add(new THREE.LineSegments(e, lineMat));
-    trash.push(geo, e);
+  const lineMat = new THREE.LineBasicMaterial({ color: new THREE.Color(paint.edge).multiplyScalar(0.9) });
+  const flatMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  const accentMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(paint.accent).multiplyScalar(1.5), side: THREE.DoubleSide });
+  trash.push(lineMat, flatMat, accentMat);
+  const part = (points: number[][], faces: number[][], colour: number, outline = true) => {
+    const geo = tris(points, faces, new THREE.Color(colour));
+    const m = new THREE.Mesh(geo, flatMat);
+    trash.push(geo);
+    if (outline) {
+      const e = new THREE.EdgesGeometry(geo, 12);
+      m.add(new THREE.LineSegments(e, lineMat));
+      trash.push(e);
+    }
     root.add(m);
     return m;
   };
+  const strip = (points: number[][]) => {
+    const g = new THREE.BufferGeometry();
+    const [a, b, c, d] = points;
+    g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...d], 3));
+    trash.push(g);
+    root.add(new THREE.Mesh(g, accentMat));
+  };
 
-  // hull: nose, left, right, top, bottom, tail   (forward is -Z)
-  const P = [[0, 0.04, -1.3], [-0.52, 0.0, 0.5], [0.52, 0.0, 0.5], [0, 0.4, 0.2], [0, -0.16, 0.25], [0, 0.12, 0.85]];
-  outlined(tris(P, [[0, 1, 3], [0, 3, 2], [1, 5, 3], [3, 5, 2], [0, 4, 1], [0, 2, 4], [1, 4, 5], [4, 2, 5]], hullCol));
+  // ---- hull (forward is -Z) ----------------------------------------------
+  //         0 nose      1,2 shoulders                3,4 widest               5 brow        6 spine
+  const H = [[0, 0.02, -1.55], [-0.3, 0.03, -0.35], [0.3, 0.03, -0.35], [-0.46, 0, 0.5], [0.46, 0, 0.5], [0, 0.2, -0.62], [0, 0.34, 0.3],
+    //       7,8 tail corners                        9 tail top      10 keel
+    [-0.3, 0.08, 0.92], [0.3, 0.08, 0.92], [0, 0.2, 0.98], [0, -0.17, 0.15]];
+  part(H, [
+    [0, 1, 5], [0, 5, 2], [1, 3, 6], [1, 6, 5], [2, 5, 6], [2, 6, 4], [3, 7, 6], [4, 6, 8], [7, 9, 6], [8, 6, 9],
+    [0, 10, 1], [0, 2, 10], [1, 10, 3], [2, 4, 10], [3, 10, 7], [4, 8, 10], [7, 10, 8], [7, 8, 9],
+  ], paint.hull);
+  // spine light
+  strip([[-0.04, 0.232, -0.5], [0.04, 0.232, -0.5], [0.04, 0.352, 0.28], [-0.04, 0.352, 0.28]]);
+  // tail light bar
+  strip([[-0.2, 0.105, 0.945], [0.2, 0.105, 0.945], [0.1, 0.15, 0.967], [-0.1, 0.15, 0.967]]);
 
-  // wings
-  for (const s of [-1, 1]) {
-    const W = [[s * 0.42, 0.02, -0.15], [s * 1.0, -0.04, 0.72], [s * 0.42, 0.02, 0.62], [s * 0.5, 0.1, 0.4]];
-    outlined(tris(W, [[0, 1, 3], [3, 1, 2], [0, 2, 1], [0, 3, 2]], wingCol));
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.5),
-      new THREE.MeshBasicMaterial({ color: new THREE.Color(pal.accent).multiplyScalar(1.15) }));
-    fin.position.set(s * 1.0, 0.06, 0.62);
-    trash.push(fin.geometry, fin.material as THREE.Material);
-    root.add(fin);
-  }
+  // ---- canopy ------------------------------------------------------------
+  part([[0, 0.17, -0.95], [-0.15, 0.2, -0.42], [0.15, 0.2, -0.42], [0, 0.36, -0.36], [0, 0.31, 0.02]],
+    [[0, 1, 3], [0, 3, 2], [1, 4, 3], [2, 3, 4]], paint.canopy);
 
-  // cockpit
-  const cockpitGeo = new THREE.OctahedronGeometry(0.2);
-  const cockpitMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x10163a) });
-  const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
-  cockpit.position.set(0, 0.27, -0.2);
-  cockpit.scale.set(0.8, 0.5, 1.9);
-  trash.push(cockpitGeo, cockpitMat);
-  root.add(cockpit);
-
-  // thrusters
-  const tex = glowTexture();
-  const hot = new THREE.Color(pal.trail);
-  const nozzleGeo = new THREE.CylinderGeometry(0.17, 0.13, 0.4, 8);
-  const coreGeo = new THREE.CircleGeometry(0.13, 12);
-  const coreMat = new THREE.MeshBasicMaterial({ color: hot.clone().lerp(new THREE.Color(1, 1, 1), 0.5).multiplyScalar(2), side: THREE.DoubleSide });
-  const glowMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().multiplyScalar(0.7), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
-  trash.push(tex, nozzleGeo, coreGeo, coreMat, glowMat);
-  const nozzleMat = new THREE.MeshBasicMaterial({ color: 0x2a3166 });
-  trash.push(nozzleMat);
   const thrusters: THREE.Vector3[] = [];
   const glows: THREE.Sprite[] = [];
+  const tex = glowTexture();
+  const hot = new THREE.Color(paint.engine);
+  const coreGeo = new THREE.CircleGeometry(0.105, 6);
+  const coreMat = new THREE.MeshBasicMaterial({ color: hot.clone().lerp(new THREE.Color(1, 1, 1), 0.6).multiplyScalar(2.2), side: THREE.DoubleSide });
+  const glowMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().multiplyScalar(0.8), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  trash.push(tex, coreGeo, coreMat, glowMat);
+
   for (const s of [-1, 1]) {
-    const n = outlined(nozzleGeo.clone(), nozzleMat);
-    n.rotation.x = Math.PI / 2;
-    n.position.set(s * 0.3, 0.08, 0.72);
+    // ---- engine pod: a tapered six-sided spike ---------------------------
+    const px = s * 0.84, w = 0.15;
+    const P = [[px, 0.03, -0.72],
+      [px - w, 0.04, -0.05], [px, 0.2, -0.05], [px + w, 0.04, -0.05], [px, -0.1, -0.05],
+      [px - w * 0.85, 0.04, 0.8], [px, 0.17, 0.8], [px + w * 0.85, 0.04, 0.8], [px, -0.08, 0.8]];
+    part(P, [
+      [0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1],
+      [1, 5, 6], [1, 6, 2], [2, 6, 7], [2, 7, 3], [3, 7, 8], [3, 8, 4], [4, 8, 5], [4, 5, 1],
+    ], paint.hull);
+    // ---- wing plate between hull and pod, with a lit leading edge ----------
+    const W = [[s * 0.3, 0.04, -0.3], [s * 0.72, 0.05, -0.08], [s * 0.72, 0.03, 0.62], [s * 0.42, 0.02, 0.6]];
+    part(W, [[0, 1, 2], [0, 2, 3]], paint.panel);
+    strip([[s * 0.3, 0.052, -0.3], [s * 0.72, 0.062, -0.08], [s * 0.72, 0.062, 0.03], [s * 0.3, 0.052, -0.19]]);
+    // ---- canted fin ------------------------------------------------------
+    const F = [[px, 0.17, 0.2], [px, 0.15, 0.8], [px + s * 0.2, 0.5, 0.9], [px + s * 0.17, 0.46, 0.62]];
+    part(F, [[0, 1, 2], [0, 2, 3]], paint.panel);
+    strip([[px + s * 0.2, 0.5, 0.9], [px + s * 0.17, 0.46, 0.62], [px + s * 0.13, 0.39, 0.64], [px + s * 0.16, 0.42, 0.89]]);
+    // ---- thruster ----------------------------------------------------------
     const core = new THREE.Mesh(coreGeo, coreMat);
-    core.position.set(s * 0.3, 0.08, 0.93);
+    core.position.set(px, 0.045, 0.805);
     root.add(core);
     const glow = new THREE.Sprite(glowMat);
-    glow.position.set(s * 0.3, 0.08, 1.12);
+    glow.position.set(px, 0.045, 0.98);
     root.add(glow);
     glows.push(glow);
-    thrusters.push(new THREE.Vector3(s * 0.3, 0.08, 1.05));
+    thrusters.push(new THREE.Vector3(px, 0.045, 0.92));
   }
 
-  // hover glow under the hull
-  const underMat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(pal.edge).multiplyScalar(0.22), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  // faint hover light under the hull, so the craft reads as floating
+  const underMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().multiplyScalar(0.16), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
   trash.push(underMat);
   const under = new THREE.Sprite(underMat);
   under.position.set(0, -0.42, 0.1);
-  under.scale.set(1.8, 0.7, 1);
   root.add(under);
 
-  root.scale.setScalar(1.25);
-  for (const t of thrusters) t.multiplyScalar(1.25);
+  const SCALE = 1.2;
+  root.scale.setScalar(SCALE);
+  for (const t of thrusters) t.multiplyScalar(SCALE);
   return {
     root, thrusters,
+    trail: hot.clone().lerp(new THREE.Color(1, 1, 1), 0.15).multiplyScalar(1.2),
+    exhaust: hot.clone().multiplyScalar(0.6),
     update(time, power) {
       const f = 0.85 + 0.15 * Math.sin(time * 47) + 0.1 * Math.sin(time * 31.7);
-      const s = (0.26 + 0.2 * power) * f;
-      for (const g of glows) g.scale.set(s * 1.1, s * 1.1, 1);
-      under.scale.set(1.7 + 0.2 * Math.sin(time * 6), 0.65, 1);
+      const s = (0.16 + 0.13 * power) * f;
+      for (const g of glows) g.scale.set(s, s, 1);
+      under.scale.set(1.9 + 0.2 * Math.sin(time * 6), 0.6, 1);
     },
     dispose() { for (const t of trash) t.dispose(); },
   };
-};
+}
 
-export const SHIPS: Record<string, ShipFactory> = { arrowhead };
-export const DEFAULT_SHIP = 'arrowhead';
+export const SHIPS: Record<string, ShipFactory> = { dart: () => dart(STEALTH) };
+export const DEFAULT_SHIP = 'dart';

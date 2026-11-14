@@ -59,8 +59,9 @@ void main() {
   col += uGlow * ringm * hidden * 0.9;
 
   // reversed gravity: colours swap channels and bright bands race upwards
-  col = mix(col, col.brg * 0.8, uFlip * 0.9);
-  col += uGlow.brg * smoothstep(0.86, 1.0, sin(h * 34.0 - uTime * 9.0)) * 0.12 * uFlip * smoothstep(-0.2, 0.2, h);
+  // darker than the normal sky, so the road stands out more inside the zone, not less
+  col = mix(col, col.brg * 0.36, uFlip * 0.85);
+  col += uGlow.brg * smoothstep(0.86, 1.0, sin(h * 34.0 - uTime * 5.0)) * 0.1 * uFlip * smoothstep(0.12, 0.3, h);
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -129,10 +130,12 @@ export class Background {
           p = mod(p - uCam, box) - box * vec3(0.5, 0.4, 0.92) + uCam;
           vA = 0.5 + 0.5 * sin(uTime * 2.5 + position.z * 90.0);
           vec4 mv = viewMatrix * vec4(p, 1.0);
+          // keep the air above the road clear, and fade motes that drift close to the lens
+          vA *= smoothstep(6.5, 9.5, max(abs(p.x), p.y - 3.0)) * smoothstep(4.0, 14.0, -mv.z);
           gl_PointSize = (0.10 + position.y * 0.16) * uScale / max(-mv.z, 1.0);
           gl_Position = projectionMatrix * mv;
         }`,
-      fragmentShader: 'uniform vec3 uCol; varying float vA; void main(){ float r = length(gl_PointCoord - 0.5); gl_FragColor = vec4(uCol * smoothstep(0.5, 0.0, r) * (0.35 + 0.9 * vA), 1.0); }',
+      fragmentShader: 'uniform vec3 uCol; varying float vA; void main(){ float r = length(gl_PointCoord - 0.5); gl_FragColor = vec4(uCol * smoothstep(0.5, 0.0, r) * (0.9 * vA + 0.35 * step(0.001, vA)), 1.0); }',
     });
     this.motes = new THREE.Points(mg, mm);
     this.motes.frustumCulled = false;

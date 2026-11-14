@@ -1,5 +1,5 @@
 import { CFG } from './config';
-import { Level, gemHeight, gemReach, isGem } from './level';
+import { Level, gemHeight, gemReach, isGem, type Checkpoint } from './level';
 
 export interface InputState {
   /** -1 (left) .. 1 (right) */
@@ -68,6 +68,19 @@ export class Sim {
     this.events = [];
   }
 
+  /**
+   * Practice mode: start the run from a checkpoint instead of the start line.
+   * The clock is set to the nominal arrival time so moving roads are in a repeatable phase.
+   */
+  spawnAt(cp: Checkpoint): void {
+    this.reset();
+    const s = this.s, L = this.level;
+    s.x = cp.x; s.z = cp.z;
+    s.time = cp.z / L.def.speed;
+    s.flip = L.inFlip(cp.z);
+    if (s.flip) s.speed = L.def.speed * CFG.flipSpeed;
+  }
+
   private h(x: number, z: number): number | null {
     return this.level.heightAt(x, z, this.s.time);
   }
@@ -97,9 +110,11 @@ export class Sim {
 
     // --- forward ----------------------------------------------------------
     if (s.boost > 0) s.boost -= dt;
-    const want = s.boost > 0 ? CFG.boostSpeed : L.def.speed;
+    // a gravity-flip zone is slow motion: the ship brakes hard on the way in and the boost is cancelled
+    if (s.flip) s.boost = 0;
+    const want = s.flip ? L.def.speed * CFG.flipSpeed : s.boost > 0 ? CFG.boostSpeed : L.def.speed;
     if (s.speed < want) s.speed = Math.min(want, s.speed + CFG.speedAccel * dt);
-    else s.speed = Math.max(want, s.speed - CFG.speedDecel * dt);
+    else s.speed = Math.max(want, s.speed - (s.flip ? CFG.flipBrake : CFG.speedDecel) * dt);
     const nz = s.z + s.speed * dt;
     const front = nz + CFG.shipHalfL;
     for (const off of [-0.8, 0.8]) {

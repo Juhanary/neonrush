@@ -12,6 +12,9 @@ const SONGS: Song[] = [
   { style: 'halftime', roots: [40, 40, 41, 38], chords: [MIN, MIN, MAJ, MIN], lead: 'triangle' }, // E phrygian half-time wobble
   { style: 'dnb', roots: [41, 44, 39, 37], chords: [MIN, MAJ, MAJ, MAJ], lead: 'sine' },          // F minor drum and bass with bells
   { style: 'acid', roots: [45, 45, 43, 48], chords: [MIN, MIN, MAJ, MAJ], lead: 'sawtooth' },     // A minor acid techno
+  { style: 'breaks', roots: [40, 43, 38, 47], chords: [MIN, MAJ, MAJ, MIN], lead: 'sawtooth' },   // E minor breakbeat, faster and darker
+  { style: 'house', roots: [38, 46, 41, 36], chords: [MIN, MAJ, MAJ, MAJ], lead: 'sawtooth' },    // D minor saw-lead house
+  { style: 'dnb', roots: [42, 38, 45, 40], chords: [MIN, MAJ, MAJ, MIN], lead: 'sine' },          // F# minor drum and bass
 ];
 
 /** Fully synthesised music and effects (no audio files to load). */
@@ -73,13 +76,23 @@ export class GameAudio {
   suspend(): void { void this.ctx?.suspend().catch(() => {}); }
   resume(): void { void this.ctx?.resume().catch(() => {}); }
 
-  startMusic(world: number, bpm: number): void {
+  /** Practice mode: a checkpoint was reached. */
+  checkpoint(): void {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    this.tone(this.sfx, 'triangle', mtof(79), mtof(79), t, 0.1, 0.16);
+    this.tone(this.sfx, 'triangle', mtof(86), mtof(86), t + 0.07, 0.16, 0.16);
+  }
+
+  /** `muffled`: the run starts inside a gravity-flip zone (practice checkpoints). */
+  startMusic(world: number, bpm: number, muffled = false): void {
     this.hype = 0;
     if (!this.ctx) return;
     this.song = SONGS[world % SONGS.length];
     this.stepDur = 60 / bpm / 4;
     this.delay.delayTime.setValueAtTime(this.stepDur * 3, this.ctx.currentTime);
-    this.muffle(false, 0.01);
+    this.muffle(muffled, 0.01);
     this.playing = true;
     this.step = 0;
     this.gemCombo = 0;

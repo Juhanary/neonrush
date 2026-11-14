@@ -13,7 +13,7 @@ await p.goto(url + '?debug', { waitUntil: 'load' });
 await sleep(2500);
 const st = () => p.evaluate(() => { const g = window.__game; return { mode: g.mode, x: +g.sim.s.x.toFixed(2), y: +g.sim.s.y.toFixed(2), z: +g.sim.s.z.toFixed(1), attempts: g.attempts, gems: g.sim.collected.size }; });
 const res = {};
-await p.touchscreen.tap(190, 220);                 // first level card
+await p.tap('.card');                              // first level card
 await sleep(600);
 res.started = await st();
 // steer right with a drag on the left half

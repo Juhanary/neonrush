@@ -16,6 +16,8 @@ npm run build:single # one self-contained HTML file in dist-single/
 
 - Touch: drag with the left thumb to steer, tap the right side to jump (hold to keep jumping).
 - Keyboard: A/D or arrows steer, Space jumps, R restarts, Esc pauses.
+- Practice mode (menu): runs restart from the last checkpoint, which is saved per track. The two arrows next to the pause button step back one checkpoint or to the start.
+- Guide (menu): explains every tile and mechanic.
 
 ## Layout
 
@@ -26,7 +28,7 @@ npm run build:single # one self-contained HTML file in dist-single/
 | `src/audio` | Synthesised music and effects (WebAudio). |
 | `src/game` | Fixed-step loop, input, save data. |
 | `src/ui` | DOM HUD and menus. |
-| `tests` | Vitest: determinism, jump distance, level completability. |
+| `tests` | Vitest: determinism, jump distance, level completability at two reaction speeds, jump pads, flip zones, practice checkpoints. |
 | `scripts` | Headless Chrome smoke tests and screenshots. |
 
 See `docs/ARCHITECTURE.md` for the design rules and the notes on a later Godot port.

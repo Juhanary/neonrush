@@ -2,7 +2,7 @@
 export interface Palette {
   top: number; horizon: number; bottom: number; glow: number; fog: number;
   floor: number; edge: number; block: number; blockEdge: number;
-  accent: number; gem: number; trail: number; planetA: number; planetB: number;
+  accent: number; gem: number; /** Unused since the ship owns its trail colour; kept for world-coloured effects later. */ trail: number; planetA: number; planetB: number;
   css: string; css2: string;
 }
 
@@ -36,5 +36,23 @@ export const PALETTES: Palette[] = [
     floor: 0x4a1a90, edge: 0xff4fd8, block: 0x2affd0, blockEdge: 0xa4ffec,
     accent: 0xffe53a, gem: 0xffffff, trail: 0xff7ae6, planetA: 0xff6a2a, planetB: 0x7a0aa0,
     css: '#ff4fd8', css2: '#ffe53a',
+  },
+  { // Ember Rush: crimson world, lime obstacles
+    top: 0x2a0410, horizon: 0xe01a36, bottom: 0x16020a, glow: 0xff7a4a, fog: 0x9a1428,
+    floor: 0x5a0c1c, edge: 0xff4438, block: 0xb6ff2a, blockEdge: 0xe2ff9a,
+    accent: 0xffe9a0, gem: 0x7dffea, trail: 0xff4438, planetA: 0xffd27a, planetB: 0xc81a1a,
+    css: '#ff5a4a', css2: '#ffe9a0',
+  },
+  { // Volt Storm: navy night, electric yellow road, magenta obstacles
+    top: 0x040a30, horizon: 0x1c50b8, bottom: 0x02061c, glow: 0xfff08a, fog: 0x163a8a,
+    floor: 0x14245a, edge: 0xffe81a, block: 0xff3ad0, blockEdge: 0xff9aea,
+    accent: 0x3af0ff, gem: 0xffffff, trail: 0xffe81a, planetA: 0xfff6b0, planetB: 0x2a6ae0,
+    css: '#ffe81a', css2: '#3af0ff',
+  },
+  { // Zero Point: black void, white road, red obstacles
+    top: 0x07071a, horizon: 0x6a6aa8, bottom: 0x020208, glow: 0xdfe6ff, fog: 0x34345a,
+    floor: 0x20203a, edge: 0xf2f6ff, block: 0xff2a2a, blockEdge: 0xff9a8a,
+    accent: 0x3affd0, gem: 0xffe53a, trail: 0xf2f6ff, planetA: 0xffffff, planetB: 0x5a5a9a,
+    css: '#f2f6ff', css2: '#3affd0',
   },
 ];

@@ -5,10 +5,11 @@ import { LEVELS } from '../src/core/levels';
 import { Sim, type ShipState } from '../src/core/sim';
 
 /** Depth-first search over coarse inputs: proves a level can be finished. */
-function solve(level: Level): { ok: boolean; nodes: number; furthest: number } {
+function solve(level: Level, HOLD = 6, from = 0, untilZ = Infinity): { ok: boolean; nodes: number; furthest: number } {
   const sim = new Sim(level);
   sim.trackGems = false;
-  const HOLD = 6; // ticks per decision (50 ms: slower than a human reaction window is fine)
+  if (from > 0) sim.spawnAt(level.checkpoints[from]);
+  // HOLD = ticks per decision (6 = 50 ms, 12 = 100 ms)
   const actions: [number, boolean][] = [[0, false], [0, true], [-1, false], [1, false], [-1, true], [1, true]];
   const seen = new Set<string>();
   let nodes = 0;
@@ -25,7 +26,7 @@ function solve(level: Level): { ok: boolean; nodes: number; furthest: number } {
         sim.step({ steer, jumpPressed: jump && i === 0, jumpHeld: false });
       }
       sim.events.length = 0;
-      if (sim.s.finished) return true;
+      if (sim.s.finished || (sim.s.alive && sim.s.z >= untilZ)) return true;
       if (!sim.s.alive) continue;
       furthest = Math.max(furthest, sim.s.z);
       const k = key(sim.s);
@@ -45,6 +46,39 @@ describe('levels', () => {
       const res = solve(level);
       console.info(def.name, 'rows', level.length, 'secs', (level.finishZ / def.speed).toFixed(1), 'gems', level.gemCount, res);
       expect(res.ok, `stuck at row ${Math.floor(res.furthest / CFG.tileL)}`).toBe(true);
+    });
+  }
+});
+
+describe('levels at a human pace', () => {
+  for (const def of LEVELS) {
+    it(`${def.name} can be finished with one decision every 100 ms`, () => {
+      const level = new Level(def);
+      const res = solve(level, 12);
+      expect(res.ok, `stuck at row ${Math.floor(res.furthest / CFG.tileL)}`).toBe(true);
+    });
+  }
+});
+
+describe('practice checkpoints', () => {
+  for (const def of LEVELS) {
+    it(`${def.name}: every checkpoint is a fair place to restart from`, () => {
+      const level = new Level(def);
+      const cps = level.checkpoints;
+      console.info(def.name, 'checkpoints at rows', cps.map((c) => c.row).join(' '));
+      expect(cps.length).toBeGreaterThan(8);
+      for (let i = 1; i < cps.length; i++) expect(cps[i].row - cps[i - 1].row, `gap after row ${cps[i - 1].row}`).toBeLessThan(34);
+      for (let i = 1; i < cps.length; i++) {
+        // doing nothing must not lose the ship straight away
+        const sim = new Sim(level);
+        sim.spawnAt(cps[i]);
+        for (let t = 0; t < 24; t++) sim.step({ steer: 0, jumpPressed: false, jumpHeld: false });
+        expect(sim.s.alive, `row ${cps[i].row} dies at once`).toBe(true);
+        // and the bot gets from here past the checkpoint after next
+        const goal = i + 2 < cps.length ? cps[i + 2].z + 4 : Infinity;
+        const res = solve(level, 6, i, goal);
+        expect(res.ok, `from row ${cps[i].row} stuck at row ${Math.floor(res.furthest / CFG.tileL)}`).toBe(true);
+      }
     });
   }
 });
@@ -76,8 +110,7 @@ describe('jump pads', () => {
   }
 });
 
-describe('gravity flip', () => {
-  const def = LEVELS.find((d) => d.flips && d.flips.length)!;
+describe.each(LEVELS.filter((d) => d.flips && d.flips.length))('gravity flip in $name', (def) => {
   const level = new Level(def);
   const [from, to] = def.flips![0];
   const enter = () => {
@@ -92,7 +125,8 @@ describe('gravity flip', () => {
     for (let i = 0; i < 400 && sim.s.alive; i++) { sim.step({ steer: 0, jumpPressed: false, jumpHeld: false }); types.push(...sim.events.map((e) => e.type)); sim.events.length = 0; }
     expect(types).toContain('flipOn');
     expect(types).toContain('fly');
-    expect(sim.s.time).toBeLessThan(1.2);
+    expect(sim.s.time).toBeLessThan(1.4);
+    expect(sim.s.time).toBeGreaterThan(0.8); // slow enough to react to
   });
 
   it('holding the button does not help: it has to be tapped', () => {
@@ -101,11 +135,27 @@ describe('gravity flip', () => {
     expect(sim.s.alive).toBe(false);
   });
 
+  it('is slow motion, and one calm rhythm (tap when above mid height) carries the ship through', () => {
+    const sim = enter();
+    let slow = Infinity, taps = 0;
+    const t0 = sim.s.time;
+    for (let i = 0; i < 1200 && sim.s.alive && sim.s.z < to * CFG.tileL - 4; i++) {
+      // tap whenever the ship drifts above mid height: enough to stay alive on a flat run
+      const tap = sim.s.y > 4 && sim.s.vy > 0;
+      if (tap) taps++;
+      sim.step({ steer: 0, jumpPressed: tap, jumpHeld: false });
+      if (sim.s.flip) slow = Math.min(slow, sim.s.speed);
+    }
+    expect(sim.s.alive).toBe(true);
+    expect(slow).toBeCloseTo(def.speed * CFG.flipSpeed, 1);
+    expect(taps / (sim.s.time - t0)).toBeLessThan(2); // under two taps a second
+  });
+
   it('gravity returns after the zone', () => {
     const sim = enter();
     Object.assign(sim.s, { z: to * CFG.tileL - 2, y: 4, vy: 0, grounded: false, flip: true });
     const types: string[] = [];
-    for (let i = 0; i < 240 && sim.s.alive; i++) { sim.step({ steer: 0, jumpPressed: false, jumpHeld: false }); types.push(...sim.events.map((e) => e.type)); sim.events.length = 0; }
+    for (let i = 0; i < 240 && sim.s.alive && !(sim.s.grounded && !sim.s.flip); i++) { sim.step({ steer: 0, jumpPressed: false, jumpHeld: false }); types.push(...sim.events.map((e) => e.type)); sim.events.length = 0; }
     expect(types).toContain('flipOff');
     expect(sim.s.alive && sim.s.grounded).toBe(true);
   });

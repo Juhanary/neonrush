@@ -92,7 +92,7 @@ export class Shockwaves {
       if (t >= 1) { r.m.visible = false; continue; }
       const e = 1 - (1 - t) * (1 - t) * (1 - t);
       r.m.scale.setScalar(0.3 + e * r.size);
-      r.mat.color.copy(r.c).multiplyScalar((1 - t) * (1 - t) * 2.2);
+      r.mat.color.copy(r.c).multiplyScalar((1 - t) * (1 - t) * 1.2);
     }
   }
 }

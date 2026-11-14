@@ -25,11 +25,15 @@ export interface LevelDef {
   flips?: [number, number][];
 }
 
+export interface Checkpoint { row: number; x: number; z: number }
+
 export class Level {
   readonly rows: string[];
   readonly length: number;
   readonly finishZ: number;
   readonly gemCount: number;
+  /** Practice-mode respawn points, in track order. The first one is the start line. */
+  readonly checkpoints: Checkpoint[];
 
   constructor(readonly def: LevelDef) {
     for (const r of def.rows) {
@@ -42,6 +46,37 @@ export class Level {
     for (const r of def.rows) for (const c of r) if (isGem(c)) g++;
     this.gemCount = g;
     this.moving = def.rows.map((r) => r.includes('m'));
+    this.checkpoints = this.findCheckpoints();
+  }
+
+  /**
+   * A checkpoint needs two rows of floor (ice and rails count) in one lane and no block right after them.
+   * The lane nearest the middle wins, so the result depends only on the level data.
+   */
+  private findCheckpoints(): Checkpoint[] {
+    const out: Checkpoint[] = [{ row: 0, x: 0, z: 2 }];
+    const plain = (row: number, lane: number) => { const t = this.tile(row, lane); return t === '=' || t === 'o' || t === 'O' || t === 'i' || t === '|'; };
+    let last = 0, boost = -99;
+    for (let row = 1; row < this.length - 4; row++) {
+      if (this.rows[row - 1].includes('>')) boost = row - 1;
+      // never between a boost pad and the long jump it is there for
+      if (row - last < CFG.checkpointGap || row - boost < 12) continue;
+      for (const lane of [2, 1, 3, 0, 4]) {
+        if (plain(row, lane) && plain(row + 1, lane) && this.tile(row + 2, lane) !== '#') {
+          out.push({ row, x: this.laneCenter(lane), z: row * CFG.tileL + 1 });
+          last = row;
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Index of the last checkpoint at or before `z`. */
+  checkpointAt(z: number): number {
+    let i = 0;
+    while (i + 1 < this.checkpoints.length && this.checkpoints[i + 1].z <= z) i++;
+    return i;
   }
 
   private moving: boolean[];

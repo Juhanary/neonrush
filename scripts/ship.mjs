@@ -1,21 +1,18 @@
+// Close-up of the ship on a given track (paused), to judge the craft itself.
 import puppeteer from 'puppeteer-core';
-const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--lang=fi-FI'] });
+const url = process.argv[2], out = process.argv[3], level = +(process.argv[4] ?? 0);
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const p = await b.newPage();
-await p.setViewport({ width: 844, height: 390, deviceScaleFactor: 2 });
+await p.setViewport({ width: 844, height: 390, deviceScaleFactor: 4 });
 const errs = [];
 p.on('pageerror', (e) => errs.push(e.message));
-await p.goto(process.argv[2] + '?debug', { waitUntil: 'load' });
+await p.goto(url + '?debug', { waitUntil: 'load' });
 await new Promise((r) => setTimeout(r, 2500));
-const out = process.argv[3];
-const texts = async () => p.evaluate(() => [...document.querySelectorAll('#menu [data-i18n], #muteBtn, .card small')].map((e) => e.textContent).join(' | '));
-const first = await texts();
-await p.evaluate(() => document.getElementById('langBtn').click());
-await new Promise((r) => setTimeout(r, 300));
-const second = await texts();
-await p.screenshot({ path: out + '/menu-lang.png' });
-await p.evaluate(() => document.querySelectorAll('.card')[0].click());
-await new Promise((r) => setTimeout(r, 1500));
+await p.evaluate((i) => document.querySelectorAll('.card')[i].click(), level);
+await new Promise((r) => setTimeout(r, 900));
 await p.evaluate(() => { window.__game.mode = 'pause'; });
-await p.screenshot({ path: out + '/ship.png', clip: { x: 272, y: 190, width: 300, height: 200 } });
-console.log(first, '\n', second, errs);
+await new Promise((r) => setTimeout(r, 200));
+await p.screenshot({ path: `${out}/ship-${level}.png`, clip: { x: 342, y: 240, width: 160, height: 90 } });
+
+console.log('ok', errs);
 await b.close();

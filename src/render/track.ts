@@ -27,7 +27,7 @@ void main() {
     w.y -= far * far * (8.0 + aSeed * 16.0);
     w.x += far * far * (aSeed - 0.5) * 7.0;
     // reversed gravity makes the whole road tremble
-    if (aKind < 8.5) w.y += sin(uTime * 19.0 + aSeed * 40.0) * 0.07 * uFlip;
+    if (aKind < 8.5) w.y += sin(uTime * 9.0 + aSeed * 40.0) * 0.025 * uFlip;
   }
   vAhead = ahead; vWorld = w.xyz;
   gl_Position = projectionMatrix * viewMatrix * w;
@@ -99,19 +99,20 @@ void main() {
     base = uEdge * (0.3 + 0.3 * run);
     ecol = uEdge; gain = 1.9 + 0.6 * uBeat;
   } else if (vKind > 8.5) {     // ceiling of a gravity-flip zone: obstacle colour, it kills
-    base = uBlock * (0.6 + 0.5 * sin(uTime * 12.0 + vWorld.z * 0.5));
-    ecol = uBlockEdge; gain = 2.2;
+    // kept dim on purpose: the bars converge on the horizon and would bloom into a white blot over the road
+    base = uBlock * (0.34 + 0.1 * sin(uTime * 4.0 + vWorld.z * 0.5));
+    ecol = uBlockEdge; gain = 0.55;
   } else {                      // skyline pillar
     float band = smoothstep(0.82, 0.9, fract(vWorld.y * 0.22 + vSeed * 7.0 - uTime * 0.25));
     base = uFloor * 0.32 + uGlow * band * 0.3;
     ecol = mix(uEdge, uGlow, vSeed); gain = 0.45 + 0.7 * uBeat * vSeed;
   }
-  gain *= 1.0 + 0.45 * uFlip * (0.5 + 0.5 * sin(uTime * 14.0 - vAhead * 0.4));
+  gain *= 1.0 + 0.15 * uFlip * (0.5 + 0.5 * sin(uTime * 8.0 - vAhead * 0.4));
   vec3 col = base + ecol * (edge * gain + halo * 0.08 * gain);
 
   float pd = length(vWorld.xz - uPulse.xy);
   float ring = smoothstep(1.4, 0.0, abs(pd - uPulse.z * 34.0)) * exp(-uPulse.z * 4.0);
-  if (vKind < 4.5) col += ecol * ring * 1.8;
+  if (vKind < 0.5 || (vKind > 1.5 && vKind < 4.5)) col += ecol * ring * 1.0; // never on blocks: their look must not change
 
   float f = smoothstep(85.0, 180.0, vAhead);
   col = mix(col, uFog, f * 0.85);
@@ -149,6 +150,9 @@ export class Track {
   private gems = new Map<number, THREE.Mesh>();
   private spinners: { o: THREE.Object3D; s: number }[] = [];
   private portal: THREE.Group;
+  private marks: { g: THREE.Group; z: number; mat: THREE.MeshBasicMaterial }[] = [];
+  private markOff: THREE.Color;
+  private markOn: THREE.Color;
   private disposables: { dispose(): void }[] = [];
 
   constructor(level: Level, pal: Palette) {
@@ -257,6 +261,26 @@ export class Track {
       }
     }
 
+    // ---- practice checkpoints: a pair of diamonds beside the road, shown in practice mode only ----
+    this.markOff = hdr(pal.accent, 0.45);
+    this.markOn = hdr(pal.accent, 1.7);
+    const markGeo = new THREE.OctahedronGeometry(0.34);
+    this.disposables.push(markGeo);
+    for (const cp of level.checkpoints.slice(1)) {
+      const mat = new THREE.MeshBasicMaterial({ color: this.markOff.clone() });
+      this.disposables.push(mat);
+      const g = new THREE.Group();
+      for (const side of [-1, 1]) {
+        const m = new THREE.Mesh(markGeo, mat);
+        m.position.set(side * (ROAD_W / 2 + 0.9), 0.9, -cp.z);
+        m.scale.set(1, 1.7, 1);
+        g.add(m);
+      }
+      g.visible = false;
+      this.marks.push({ g, z: cp.z, mat });
+      this.group.add(g);
+    }
+
     // ---- finish portal ---------------------------------------------------
     this.portal = new THREE.Group();
     this.portal.position.set(0, 2.6, -level.finishZ);
@@ -309,6 +333,13 @@ export class Track {
   hideGem(id: number): void {
     const g = this.gems.get(id);
     if (g) g.visible = false;
+  }
+  setPractice(on: boolean): void {
+    for (const m of this.marks) { m.g.visible = on; m.mat.color.copy(this.markOff); }
+  }
+  /** Light every checkpoint marker up to `z`. */
+  reach(z: number): void {
+    for (const m of this.marks) m.mat.color.copy(m.z <= z + 0.01 ? this.markOn : this.markOff);
   }
   pulse(x: number, z: number): void {
     this.uniforms.uPulse.value.set(x, -z, 0);

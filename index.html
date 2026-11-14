@@ -21,8 +21,13 @@
   <div class="hud-left">
     <button id="pauseBtn" class="icon" aria-label="Pause">&#10074;&#10074;</button>
     <span id="attempt">ATTEMPT 1</span>
+    <span id="prac" hidden>
+      <button id="cpStartBtn" class="icon" aria-label="From the start">&#9664;&#9664;</button>
+      <button id="cpBackBtn" class="icon" aria-label="Previous checkpoint">&#9664;</button>
+      <b data-i18n="practice">PRACTICE</b>
+    </span>
   </div>
-  <div id="bar"><i></i><span id="pct">0%</span></div>
+  <div id="bar"><i></i><div id="ticks"></div><span id="pct">0%</span></div>
   <div id="gems">&#9670; 0</div>
 </div>
 <div id="hint"></div>
@@ -38,7 +43,10 @@
     <button id="muteBtn" class="ghost">SOUND ON</button>
     <button id="fsBtn" class="ghost" data-i18n="fullscreen">FULLSCREEN</button>
     <button id="langBtn" class="ghost" data-i18n="switchLang">SUOMEKSI</button>
+    <button id="modeBtn" class="ghost">PRACTICE: OFF</button>
+    <button id="guideBtn" class="ghost" data-i18n="guide">GUIDE</button>
   </div>
+  <p id="modeNote" class="note2" data-i18n="practiceMenu" hidden></p>
   <p id="rotate" class="note" data-i18n="landscape">Best played in landscape</p>
 </section>
 
@@ -51,10 +59,16 @@
   </div>
 </section>
 
+<section id="guide" class="panel" hidden>
+  <h2 data-i18n="guideTitle">HOW IT WORKS</h2>
+  <div id="guideList"></div>
+  <button id="guideBack" class="big" data-i18n="back">BACK</button>
+</section>
+
 <section id="done" class="panel" hidden>
-  <h2 data-i18n="complete">LEVEL COMPLETE</h2>
+  <h2 id="doneTitle">LEVEL COMPLETE</h2>
   <div id="stars"><span>&#9733;</span><span>&#9733;</span><span>&#9733;</span></div>
-  <p class="note2" data-i18n="starRule">FINISH &middot; HALF THE GEMS &middot; ALL GEMS</p>
+  <p id="doneNote" class="note2">FINISH &middot; HALF THE GEMS &middot; ALL GEMS</p>
   <p id="doneStats" class="stats"></p>
   <div class="col">
     <button id="nextBtn" class="big" data-i18n="next">NEXT LEVEL</button>

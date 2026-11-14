@@ -36,6 +36,10 @@ export class Game {
   private prevBest = 0;
   private hype = 0;
   private fire = 0;
+  /** Practice mode: runs restart from checkpoint `cp`; `hold` is the short freeze after such a restart. */
+  private practice = false;
+  private cp = 0;
+  private hold = 0;
 
   constructor(private view: View, surface: HTMLElement) {
     this.sim = new Sim(this.levels[0]);
@@ -45,7 +49,15 @@ export class Game {
       play: (i) => this.start(i),
       pause: () => this.pause(),
       resume: () => this.resume(),
-      restart: () => { this.audio.unlock(); this.audio.resume(); this.ui.showPlay(); this.respawn(); },
+      restart: () => {
+        this.audio.unlock(); this.audio.resume();
+        // "play for real" after a practice run
+        if (this.mode === 'done' && this.practice) this.setPractice(false);
+        this.ui.showPlay(); this.respawn();
+      },
+      mode: () => { this.setPractice(!this.practice); if (this.mode === 'menu') this.toMenu(); return this.practice; },
+      cpBack: () => this.jumpTo(Math.max(0, this.cp - 1)),
+      cpStart: () => this.jumpTo(0),
       menu: () => this.toMenu(),
       next: () => this.start(Math.min(this.idx + 1, this.levels.length - 1)),
       mute: () => {
@@ -64,6 +76,8 @@ export class Game {
     });
     this.ui.setMuted(this.save.muted);
     this.ui.setLang(this.save.lang ?? detectLang());
+    this.practice = !!this.save.practiceOn;
+    this.ui.setPractice(this.practice);
     this.input.attach(surface);
     this.input.onStick = (a, x, y, dx) => this.ui.setStick(a, x, y, dx);
     surface.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse') this.touch = true; });
@@ -107,9 +121,37 @@ export class Game {
     }));
   }
 
+  private setPractice(on: boolean): void {
+    this.practice = on;
+    this.save.practiceOn = on;
+    storeSave(this.save);
+    this.ui.setPractice(on);
+    this.view.setPractice(on);
+  }
+
+  /** Practice: move the restart point and restart from it. */
+  private jumpTo(cp: number): void {
+    if (!this.practice || (this.mode !== 'play' && this.mode !== 'dead')) return;
+    this.cp = cp;
+    this.storeCp();
+    this.respawn();
+  }
+
+  private storeCp(): void {
+    const level = this.levels[this.idx];
+    this.save.practice[level.def.id] = level.checkpoints[this.cp].row;
+    storeSave(this.save);
+  }
+
   private start(i: number): void {
     this.audio.unlock();
     if (i !== this.idx || this.mode === 'menu') this.loadLevel(i);
+    // practice picks up at the checkpoint saved for this track
+    const level = this.levels[i];
+    const row = this.save.practice[level.def.id] ?? 0;
+    this.cp = 0;
+    level.checkpoints.forEach((c, k) => { if (c.row <= row) this.cp = k; });
+    this.view.setPractice(this.practice);
     this.attempts = 0;
     this.ui.showPlay();
     this.respawn();
@@ -117,12 +159,21 @@ export class Game {
   }
 
   private respawn(): void {
-    this.sim.reset();
+    const lvl = this.levels[this.idx];
+    if (this.practice) {
+      this.sim.spawnAt(lvl.checkpoints[this.cp]);
+      this.hold = this.cp > 0 ? 0.55 : 0;
+    } else {
+      this.sim.reset();
+      this.hold = 0;
+    }
     this.prev = { ...this.sim.s };
     this.acc = 0;
     this.doneShown = false;
     this.coast = 0;
     this.nextHint = 0;
+    const hints = lvl.def.hints ?? [];
+    while (this.nextHint < hints.length && hints[this.nextHint].row < this.sim.s.z / CFG.tileL) this.nextHint++;
     this.ui.hideCallout();
     this.ui.hideBanner();
     this.ui.setFlip(false, 0);
@@ -130,12 +181,17 @@ export class Game {
     this.prevBest = this.save.best[this.levels[this.idx].def.id] ?? 0;
     this.input.clear();
     this.view.resetRun();
+    if (this.practice) {
+      this.view.checkpoint(this.pose(1));
+      this.ui.setCheckpoints(lvl.checkpoints.slice(1).map((c) => c.z / lvl.finishZ), this.cp - 1);
+      if (this.hold > 0) this.ui.showCallout(this.ui.t('ready'));
+    }
     this.attempts++;
     const id = this.levels[this.idx].def.id;
     this.save.attempts[id] = (this.save.attempts[id] ?? 0) + 1;
     this.ui.setAttempt(this.attempts);
     this.ui.setHud(0, 0, this.levels[this.idx].gemCount);
-    this.audio.startMusic(this.levels[this.idx].def.world, this.levels[this.idx].def.bpm);
+    this.audio.startMusic(lvl.def.world, lvl.def.bpm, this.sim.s.flip);
     this.mode = 'play';
   }
 
@@ -148,6 +204,19 @@ export class Game {
 
   /** Rewards for progress within a run: halfway, then beating the stored record. */
   private milestones(): void {
+    if (this.practice) {
+      // practice has checkpoints instead of rewards
+      const k = this.levels[this.idx].checkpointAt(this.sim.s.z);
+      if (k > this.cp && this.sim.s.alive) {
+        this.cp = k;
+        this.storeCp();
+        this.audio.checkpoint();
+        this.view.checkpoint(this.pose(1));
+        const lvl = this.levels[this.idx];
+        this.ui.setCheckpoints(lvl.checkpoints.slice(1).map((c) => c.z / lvl.finishZ), this.cp - 1);
+      }
+      return;
+    }
     const pct = (this.sim.s.z / this.levels[this.idx].finishZ) * 100;
     if (this.hype < 1 && pct >= 50) {
       this.setHype(1);
@@ -204,7 +273,7 @@ export class Game {
         this.audio.stopMusic();
         this.input.clear();
         const pct = Math.min(99, Math.floor((s.z / level.finishZ) * 100));
-        if (pct > (this.save.best[id] ?? 0)) {
+        if (!this.practice && pct > (this.save.best[id] ?? 0)) {
           this.save.best[id] = pct;
           storeSave(this.save);
           if (pct >= 5) { this.ui.showBanner(`${this.ui.t('record')} ${pct}%`, true); this.timer = 1.25; }
@@ -212,10 +281,16 @@ export class Game {
       } else if (e.type === 'finish') {
         this.mode = 'done';
         this.timer = 1.1;
-        this.save.best[id] = 100;
-        this.save.done[id] = true;
-        this.save.gems[id] = Math.max(this.save.gems[id] ?? 0, this.sim.collected.size);
-        this.save.stars[id] = Math.max(this.save.stars[id] ?? 0, this.stars());
+        if (this.practice) {
+          // a practice run earns nothing; the next one starts from the beginning again
+          this.cp = 0;
+          this.save.practice[id] = 0;
+        } else {
+          this.save.best[id] = 100;
+          this.save.done[id] = true;
+          this.save.gems[id] = Math.max(this.save.gems[id] ?? 0, this.sim.collected.size);
+          this.save.stars[id] = Math.max(this.save.stars[id] ?? 0, this.stars());
+        }
         this.fire = 0;
         this.ui.hideBanner();
         storeSave(this.save);
@@ -237,7 +312,12 @@ export class Game {
     this.clock += dt;
 
     if (this.mode === 'play') {
-      this.acc += dt;
+      if (this.hold > 0) {
+        // frozen for a moment after a checkpoint restart, so the road ahead can be read
+        this.hold -= dt;
+        this.acc = 0;
+        if (this.hold <= 0) { this.input.clear(); this.ui.hideCallout(); }
+      } else this.acc += dt;
       while (this.acc >= CFG.dt && this.mode === 'play') {
         this.prev = { ...this.sim.s };
         this.sim.step(this.input.sample());
@@ -246,11 +326,11 @@ export class Game {
       }
       if (this.mode === 'play') this.milestones();
       const fs = this.sim.s;
-      const danger = fs.flip && fs.alive ? Math.max(0, Math.min(1, (fs.y - (CFG.flipCeil - 4.5)) / 4.5)) : 0;
+      const danger = fs.flip && fs.alive ? Math.max(0, Math.min(1, (fs.y - (CFG.flipCeil - 3)) / 3)) : 0;
       this.ui.setFlip(fs.flip && this.mode === 'play', danger);
       if (danger > 0.45) this.audio.warn(danger);
       const def = this.levels[this.idx].def;
-      if (def.hints && !this.save.done[def.id]) {
+      if (def.hints && (this.practice || !this.save.done[def.id])) {
         const row = this.sim.s.z / CFG.tileL;
         while (this.nextHint < def.hints.length && row >= def.hints[this.nextHint].row) {
           if (this.mode === 'play') this.ui.showCallout(this.ui.t('hint.' + def.hints[this.nextHint].key));
@@ -273,7 +353,7 @@ export class Game {
         this.audio.stopMusic();
         this.ui.showDone({
           attempts: this.attempts, gems: this.sim.collected.size, gemTotal: this.levels[this.idx].gemCount, stars: this.stars(),
-          hasNext: this.idx < this.levels.length - 1,
+          hasNext: this.idx < this.levels.length - 1, practice: this.practice,
         });
       }
     }

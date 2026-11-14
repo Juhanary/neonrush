@@ -29,8 +29,8 @@ export class Particles {
       vertexShader: /* glsl */ `
         attribute vec3 aColor; attribute float aSize; uniform float uScale; varying vec3 vC;
         void main() {
-          vC = aColor;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vC = aColor * smoothstep(1.5, 5.0, -mv.z); // fade out near the lens instead of turning into a big blob
           gl_PointSize = aSize * uScale / max(-mv.z, 0.5);
           gl_Position = projectionMatrix * mv;
         }`,

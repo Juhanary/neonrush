@@ -6,11 +6,14 @@ export interface Save {
   stars: Record<string, number>;
   attempts: Record<string, number>;
   muted: boolean;
+  /** Practice mode switch, and the checkpoint row reached on each track. */
+  practiceOn: boolean;
+  practice: Record<string, number>;
   lang?: 'en' | 'fi';
 }
 
 const KEY = 'neonrush.save.v1';
-const blank = (): Save => ({ best: {}, gems: {}, done: {}, stars: {}, attempts: {}, muted: false });
+const blank = (): Save => ({ best: {}, gems: {}, done: {}, stars: {}, attempts: {}, muted: false, practiceOn: false, practice: {} });
 
 export function loadSave(): Save {
   try {
