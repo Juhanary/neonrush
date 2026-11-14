@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a3c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Neonrush</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="touch"></div>
+<div id="flash"></div>
+<div id="stick"><i></i></div>
+
+<div id="hud" hidden>
+  <div class="hud-left">
+    <button id="pauseBtn" class="icon" aria-label="Pause">&#10074;&#10074;</button>
+    <span id="attempt">ATTEMPT 1</span>
+  </div>
+  <div id="bar"><i></i><span id="pct">0%</span></div>
+  <div id="gems">&#9670; 0</div>
+</div>
+<div id="hint"></div>
+
+<section id="menu" class="panel">
+  <h1 class="logo"><span>NEON</span><span>RUSH</span></h1>
+  <p class="tag">HOVER &middot; JUMP &middot; SURVIVE</p>
+  <div id="levels"></div>
+  <div class="row">
+    <button id="muteBtn" class="ghost">SOUND ON</button>
+    <button id="fsBtn" class="ghost">FULLSCREEN</button>
+  </div>
+  <p id="rotate" class="note">Best played in landscape</p>
+</section>
+
+<section id="pause" class="panel" hidden>
+  <h2>PAUSED</h2>
+  <div class="col">
+    <button id="resumeBtn" class="big">RESUME</button>
+    <button id="restartBtn" class="ghost">RESTART</button>
+    <button id="quitBtn" class="ghost">LEVELS</button>
+  </div>
+</section>
+
+<section id="done" class="panel" hidden>
+  <h2>LEVEL COMPLETE</h2>
+  <p id="doneStats" class="stats"></p>
+  <div class="col">
+    <button id="nextBtn" class="big">NEXT LEVEL</button>
+    <button id="againBtn" class="ghost">PLAY AGAIN</button>
+    <button id="doneMenuBtn" class="ghost">LEVELS</button>
+  </div>
+</section>
+
+<div id="fatal" hidden></div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
