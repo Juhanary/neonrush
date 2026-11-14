@@ -1,5 +1,5 @@
 import { GameAudio } from '../audio/audio';
-import { CFG } from '../core/config';
+import { BEAT_LEN, CFG } from '../core/config';
 import { Level } from '../core/level';
 import { LEVELS } from '../core/levels';
 import { Sim, type ShipState } from '../core/sim';
@@ -40,6 +40,8 @@ export class Game {
   private practice = false;
   private cp = 0;
   private hold = 0;
+  /** Clock value at which the free-running menu theme started. */
+  private menuT0 = 0;
 
   constructor(private view: View, surface: HTMLElement) {
     this.sim = new Sim(this.levels[0]);
@@ -81,6 +83,12 @@ export class Game {
     this.input.attach(surface);
     this.input.onStick = (a, x, y, dx) => this.ui.setStick(a, x, y, dx);
     surface.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse') this.touch = true; });
+    // browsers only allow sound after a touch: the first one anywhere starts the menu theme
+    window.addEventListener('pointerdown', () => {
+      if (this.audio.ready) return;
+      this.audio.unlock();
+      if (this.mode === 'menu') this.menuMusic();
+    }, true);
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' || e.code === 'KeyP') { if (this.mode === 'pause') this.resume(); else this.pause(); }
       if (e.code === 'KeyR' && (this.mode === 'play' || this.mode === 'dead')) this.respawn();
@@ -102,9 +110,17 @@ export class Game {
     this.ui.setTheme(pal.css, pal.css2);
   }
 
+  /** The menu theme runs on the clock instead of on a track. */
+  private menuMusic(): void {
+    if (this.audio.current === 'menu') return;
+    this.menuT0 = this.clock;
+    this.audio.playSong('menu');
+  }
+
   private toMenu(): void {
     this.mode = 'menu';
-    this.audio.stopMusic();
+    this.audio.resume();
+    this.menuMusic();
     this.sim.reset();
     this.prev = { ...this.sim.s };
     this.view.resetRun();
@@ -191,7 +207,8 @@ export class Game {
     this.save.attempts[id] = (this.save.attempts[id] ?? 0) + 1;
     this.ui.setAttempt(this.attempts);
     this.ui.setHud(0, 0, this.levels[this.idx].gemCount);
-    this.audio.startMusic(lvl.def.world, lvl.def.bpm, this.sim.s.flip);
+    // the song starts at the beat the ship stands on, so a checkpoint restart resumes mid-song
+    this.audio.playSong(lvl.def.song, { energy: (bar) => lvl.energyOf(bar), from: lvl.beatAt(this.sim.s.z), muffled: this.sim.s.flip });
     this.mode = 'play';
   }
 
@@ -254,7 +271,7 @@ export class Game {
     return {
       x: L(a.x, b.x), y: L(a.y, b.y), z: L(a.z, b.z) + this.coast, vx: b.vx, vy: b.vy, speed: b.speed,
       grounded: b.grounded, boosting: b.boost > 0, alive: b.alive && !b.finished,
-      t: b.time, flip: b.flip,
+      t: this.levels[this.idx].beatAt(L(a.z, b.z)), flip: b.flip,
     };
   }
 
@@ -279,6 +296,7 @@ export class Game {
           if (pct >= 5) { this.ui.showBanner(`${this.ui.t('record')} ${pct}%`, true); this.timer = 1.25; }
         }
       } else if (e.type === 'finish') {
+        this.audio.stopMusic();
         this.mode = 'done';
         this.timer = 1.1;
         if (this.practice) {
@@ -350,7 +368,7 @@ export class Game {
       if (this.fire <= 0) { this.fire = 0.22 + Math.random() * 0.2; this.view.firework(); }
       if (this.timer <= 0 && !this.doneShown) {
         this.doneShown = true;
-        this.audio.stopMusic();
+        this.menuMusic();
         this.ui.showDone({
           attempts: this.attempts, gems: this.sim.collected.size, gemTotal: this.levels[this.idx].gemCount, stars: this.stars(),
           hasNext: this.idx < this.levels.length - 1, practice: this.practice,
@@ -359,12 +377,22 @@ export class Game {
     }
 
     if (this.mode !== 'play') this.ui.setFlip(false, 0);
-    this.audio.update();
     const playing = this.mode === 'play';
-    const t = this.mode === 'menu' ? this.clock : this.sim.s.time;
-    const phase = (t * this.levels[this.idx].def.bpm / 60) % 1;
-    const beat = this.mode === 'dead' ? 0 : Math.exp(-phase * 4.5);
     const alpha = playing ? this.acc / CFG.dt : 1;
-    this.view.frame(dt, this.pose(alpha), this.clock, beat, this.mode === 'menu');
+    const pose = this.pose(alpha);
+    // one beat position drives the music, the pulse of the visuals and the moving roads
+    let beatPos: number;
+    if (this.audio.current === 'menu') {
+      const bps = this.audio.bpmOf('menu') / 60;
+      beatPos = (this.clock - this.menuT0) * bps;
+      this.audio.sync(beatPos, bps);
+    } else {
+      beatPos = pose.t;
+      if (playing) this.audio.sync(beatPos, this.hold > 0 ? 0 : this.sim.s.speed / BEAT_LEN);
+    }
+    const phase = beatPos - Math.floor(beatPos);
+    const downbeat = Math.floor(beatPos) % CFG.beatsPerBar === 0;
+    const beat = this.mode === 'dead' || beatPos < 0 ? 0 : Math.exp(-phase * 4.5) * (downbeat ? 1 : 0.7);
+    this.view.frame(dt, pose, this.clock, beat, this.mode === 'menu');
   };
 }

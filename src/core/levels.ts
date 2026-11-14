@@ -1,21 +1,61 @@
+import { BAR_ROWS, CFG } from './config';
 import type { LevelDef } from './level';
 
-const r = (n: number, row: string): string[] => Array<string>(n).fill(row);
+/*
+ * TRACKS ARE WRITTEN IN BARS AND BEATS.
+ *
+ *   1 beat = 3 rows, 1 bar = 4 beats = 12 rows, every track is 16 bars (192 rows).
+ *   The first row of every beat is the "beat row": the beat sounds while the ship is in the middle of it.
+ *
+ * Rules that make a track playable to the music (tests/levels.test.ts enforces them with a bot that may
+ * only press jump on the beat):
+ *   - a gap or a block to jump starts right after a beat row, so the take-off is on the beat;
+ *   - walls with an opening, pads and gems sit on beat rows, so they are passed, hit and heard on the beat;
+ *   - an idea lasts a whole number of bars; gravity-flip zones start and end on bar lines;
+ *   - a jump lasts longer than a beat, so the beat right after a take-off is never another take-off;
+ *   - jump pads land straight ahead with no steering.
+ * The helpers below build one beat (three rows) at a time, and `bar` refuses anything that is not 12 rows.
+ * See docs/LEVELS.md for the full method.
+ */
 
-/** A hint marker inside a row list: shown `lead` rows before the row that follows it. `hint` is a text key (ui/i18n.ts). */
+type Rows = string[];
+const F = '=====', G = '.....';
+
+/** `beats` beats of one and the same row. */
+const run = (row = F, beats = 1): Rows => Array<string>(beats * CFG.rowsPerBeat).fill(row);
+/** One beat whose beat row is `first` (a wall, a pad, a gem row) followed by `rest`. */
+const on = (first: string, rest = F): Rows => [first, rest, rest];
+/** Jump on the beat: take off from `from`, then a two-row gap. `air` is the first gap row (for a gem). */
+const hop = (from = F, air = G): Rows => [from, air, G];
+/** Long jump, two beats: a three-row gap. Needs 28 m/s or more. */
+const leap = (from = F, to = F): Rows => [from, G, G, G, to, to];
+/** Jump onto a wall of blocks, two beats: take off on the beat, land on top, drive off. */
+const mount = (wall = '#####', after = F): Rows => [F, F, wall, wall, wall, after];
+/** Jump pad, two beats: launches on the beat, `air` holds gems, lands straight ahead on what follows. */
+const pad = (air = '..+..', gapRows = 5): Rows => ['^^^^^', air, air, ...Array<string>(gapRows - 2).fill(G), ...Array<string>(5 - gapRows).fill(F)];
+/** Boost pad and the long jump it is for, four beats (a whole bar). */
+const boost = (air = '.*.*.'): Rows => ['>>>>>', F, F, F, F, F, F, air, G, G, G, F];
+/** Exactly one bar. */
+const bar = (...parts: Rows[]): Rows => {
+  const rows = parts.flat();
+  if (rows.length !== BAR_ROWS) throw new Error(`A bar is ${BAR_ROWS} rows, got ${rows.length}: ${rows.join(' ')}`);
+  return rows;
+};
+
+/** A hint marker between bars: shown `lead` rows before the row that follows it (negative = later). `hint` is a text key (ui/i18n.ts). */
 interface Hint { hint: string; lead: number }
 const h = (hint: string, lead = 0): Hint => ({ hint, lead });
-/** Markers that open and close a gravity-flip zone at the row that follows. */
+/** Markers that open and close a gravity-flip zone at the row that follows. Put them on bar lines. */
 interface Flip { flip: 'on' | 'off' }
 const FLIP_ON: Flip = { flip: 'on' }, FLIP_OFF: Flip = { flip: 'off' };
 
-function build(items: (string | Hint | Flip)[]): Pick<LevelDef, 'rows' | 'hints' | 'flips'> {
+function build(items: (Rows | Hint | Flip)[]): Pick<LevelDef, 'rows' | 'hints' | 'flips'> {
   const rows: string[] = [];
   const hints: { row: number; key: string }[] = [];
   const flips: [number, number][] = [];
   let open = -1;
   for (const it of items) {
-    if (typeof it === 'string') rows.push(it);
+    if (Array.isArray(it)) rows.push(...it);
     else if ('flip' in it) {
       if (it.flip === 'on') open = rows.length;
       else if (open >= 0) { flips.push([open, rows.length]); open = -1; }
@@ -25,267 +65,212 @@ function build(items: (string | Hint | Flip)[]): Pick<LevelDef, 'rows' | 'hints'
   return { rows, hints, flips };
 }
 
-/*
- * Track design rules (speed 24..33 m/s, a jump lasts 0.56 s and can carry the ship about 2.5 lanes sideways):
- *  - every track mixes lane changes on the ground (shifting roads, offset walls) with side jumps
- *    (islands that sit in different lanes on either side of a gap);
- *  - two rows of full floor between ideas give a breather and a practice checkpoint;
- *  - jump pads always land straight ahead with no steering (a test enforces it).
- */
-
 /** World 1 — single ideas introduced one at a time, with tutorial callouts. */
 const cyanDrift: LevelDef = {
-  id: 'cyan-drift',
-  name: 'CYAN DRIFT',
-  world: 0,
-  speed: 24,
-  bpm: 120,
+  id: 'cyan-drift', name: 'CYAN DRIFT', world: 0, speed: 24, song: 'cyan',
   ...build([
-    ...r(8, '====='),
-    h('collect', 2),
-    '==o==', '=====', '==o==', '=====', '==o==', '=====',
-    '=====', h('jump', 1.9), '.....', '.....', '=====', '=====', '=====',
-    h('steer', 1),
-    '=o===', '=====', '=====', '===o=', '=====', '=====', '=o===', '=====', '=====',
-    h('dodge', 2.5),
-    '=====', '==#==', '=====', '=====', '=====',
+    h('collect', -4),
+    bar(run(), run(), on('==o=='), on('==o==')),
+    h('jump', -7),
+    bar(on('==o=='), on('==o=='), run(), hop()),
+    h('steer', -1),
+    bar(run(), on('=o==='), on('===o='), on('=o===')),
+    h('dodge', -4),
+    bar(on('===o='), run(), [F, F, '==#=='], run()),
     h('lanes', 1),
-    ...r(4, '===..'), ...r(3, '.===.'), '..===', '..=o=', '..===', '..=o=', '=====', '=====',
-    h('opening', 3),
-    '###==', '=====', '=====', '=====', '=====', '==###', '=====', '=====', '=====',
-    ...r(3, '==...'), '=o...', h('sidejump', 2), '.....', '.....', ...r(3, '...=='), '...o=', '=====', '=====',
+    bar(run('===..'), run('.===.'), run('..==='), on('..=o=', '..===')),
+    h('opening', -3),
+    bar(run('.===.'), run(), on('###=='), run()),
+    h('sidejump', -6),
+    bar(on('==###'), run(), run('==...'), hop('=o...')),
+    bar(run('...=='), on('...o=', '...=='), run(), hop()),
     h('gemjump', 1),
-    '=O===', '=====', '=====', '===O=', '=====', '=====',
-    h('pad', 4.5),
-    '^^^^^', '..+..', '..+..', '..+..', '=====', '=====', '=====', '=====',
+    bar(on('=O==='), run(), on('===O='), run()),
+    h('pad', 3),
+    bar(pad('..+..', 4), run(), run()),
     h('zigzag', 1),
-    ...r(3, '==...'), ...r(3, '.==..'), ...r(3, '..==.'), '...==', '...o=', '...==', ...r(3, '..==.'), ...r(3, '.==..'), '=====', '=====',
-    h('ontop', 2.2),
-    '=====', '#####', '#####', '#####', '=====', '=====',
-    '=o=o=', '=====', '=====',
-    h('boost', 2.5),
-    '>>>>>', '=====', '=====', '=====', h('long', 2.7), '..*..', '..*..', '.....', '.....', '=====', '=====',
-    ...r(3, '====='),
-    h('weave', 2),
-    '=#===', '=====', '===#=', '=====', '=#===', '=====', '=====',
-    ...r(3, '...=='), h('sidejump', 2), '.....', '.....', ...r(3, '==...'), '=o...', h('again', 2), '.....', '.....', ...r(3, '..==.'), '=====',
-    '==o==', '=====', '==o==',
-    h('finish', 1),
-    ...r(5, '====='),
+    bar(run('==...'), run('.==..'), run('..==.'), run('...==')),
+    bar(on('...o=', '...=='), run('..==.'), run('.==..'), run()),
+    h('ontop', 0),
+    bar(mount(), on('=o=o='), run()),
+    h('boost', 2),
+    bar(boost('..*..')),
+    h('weave', 1),
+    bar(on('=#==='), on('===#='), on('=#==='), run('...==')),
+    h('sidejump', 1),
+    bar(hop('...=='), run('==...'), on('==o=='), run()),
   ]),
 };
 
-/** World 2 — islands, staircases and a skyway over the blocks. */
+/** World 2 — staircases, island hops and a skyway on top of the blocks. */
 const solarFlare: LevelDef = {
-  id: 'solar-flare',
-  name: 'SOLAR FLARE',
-  world: 1,
-  speed: 26,
-  bpm: 150,
-  rows: [
-    ...r(7, '====='),
-    '=o=o=', '=====', '=====', '.....', '.....', '=====', '==o==', '=====',
-    ...r(2, '==...'), ...r(2, '.==..'), '..==.', '..o=.', ...r(2, '...=='), '...o=',
-    '.....', '.....', ...r(2, '.==..'), '.o=..', '.....', '.....', ...r(3, '...=='), '=====', '=====',
-    '###==', '=====', '=====', '=====', '=====', '==###', '=====', '=====', '=====', '=====', '#==##', '=====', '=====',
-    '=====', '###..', '###..', '.###.', '.###.', '..###', '..###', '=====', '=====',
-    '==O==', '=====', '=====',
-    ...r(3, '.=.=.'), '.o.=.', '.=.=.', '.=.o.', '.=.=.', '=====',
-    '=====', '^^^^^', '.+.+.', '.+.+.', '.....', '.....', '=====', '=====',
-    ...r(2, '====='),
-    ...r(3, '..=..'), '..o..', '.....', '.....', ...r(3, '.=...'), '.....', '.....', ...r(2, '..=..'), '.....', '.....', ...r(2, '...=.'), '...o.', '=====',
-    '>>>>>', '=====', '.*.*.', '.....', '.....', '.....', '=====', '=====', '=====',
-    ...r(3, '==...'), '=o...', '.....', '.....', ...r(3, '..==.'), '.....', '.....', ...r(3, '==...'), '=o...', '=====', '=====',
-    '#####', '#####', '=====', '=====', '=o=o=', '=====',
-    '##.##', '##.##', '=====', '=====',
-    ...r(3, '=...='), 'o...o', '=...=', '=====',
-    '=====', '=^=^=', '.....', '.+.+.', '.....', '.....', '=====', '=====',
-    ...r(5, '====='),
-  ],
-};
-
-/** World 3 — fast slalom, three-lane side jumps and single-lane hops. */
-const toxicPulse: LevelDef = {
-  id: 'toxic-pulse',
-  name: 'TOXIC PULSE',
-  world: 2,
-  speed: 28,
-  bpm: 140,
-  rows: [
-    ...r(7, '====='),
-    '=o=o=', '=====', '.....', '.....', '=====', '=====', '.....', '.....', '.....', '=====', '=====',
-    '###==', '=====', '=====', '=====', '=====', '==###', '=====', '=====', '=====', '=====', '#==##', '=====', '=====', '=====',
-    ...r(3, '==...'), '=o...', '.....', '.....', ...r(3, '...=='), '...=o', '.....', '.....', ...r(3, '==...'), '=====',
-    '=====', '#####', '#####', '.....', '.....', '#####', '.....', '.....', '#####', '=====', '=====',
-    '==O==', '=====',
-    ...r(2, '==...'), ...r(2, '.==..'), ...r(2, '..==.'), ...r(2, '...=='), '...o=', ...r(2, '..==.'), ...r(2, '.==..'), '.o=..', '=====',
-    '=====', '>>>>>', '=====', '.*.*.', '.....', '.....', '.....', '=====', '=====',
-    '^^^^^', '..+..', '..+..', '.....', '.....', '=====', '=====', '=====', '=====', '=====', '=====',
-    '###=#', '=====', '=====', '=====', '#=###', '=====', '=====', '=====', '##=##', '=====', '=====',
-    ...r(3, '..=..'), '.....', '.....', ...r(2, '=....'), 'o....', '.....', '.....', ...r(3, '..=..'), '.....', '.....', ...r(2, '....='), '....o', '=====',
-    '=====', '=#=#=', '=#=#=', '=====', '=====',
-    '.....', '.....', '=====', '=o=o=', '.....', '.....', '=====', '=====',
-    '#####', '#####', '#####', '.....', '.....', '.....', '=====', '=====',
-    '=^=^=', '.....', '.+.+.', '.....', '.....', '=====', '=====', '=====',
-    ...r(3, '.=.=.'), '.o.o.', '.=.=.', '=====',
-    '=====', '.....', '.....', '==o==', '=====', '.....', '.....', '.....', '=====',
-    ...r(5, '====='),
-  ],
-};
-
-/** World 4 — ice with almost no grip and roads that slide sideways in a wave. */
-const frostLine: LevelDef = {
-  id: 'frost-line',
-  name: 'FROST LINE',
-  world: 3,
-  speed: 29,
-  bpm: 172,
+  id: 'solar-flare', name: 'SOLAR FLARE', world: 1, speed: 26, song: 'solar',
   ...build([
-    ...r(6, '====='),
-    '=o=o=', '=====', '.....', '.....', '.....', '=====', '=====',
-    h('ice', 2),
-    ...r(3, 'iiiii'), 'ii#ii', 'iiiii', 'iiiii', '#iii#', 'iiiii', 'iiiii', 'i#i#i', 'iiiii', 'ioioi',
-    ...r(4, 'iii..'), ...r(4, '.iii.'), ...r(4, '..iii'), '..ioi', ...r(4, '.iii.'), '=====',
-    '=====', '.....', '.....', '=====', '=====',
-    h('moving', 3),
-    ...r(9, '.mmm.'), '=====', '==o==',
-    '###==', '=====', '=====', '=====', '=====', '==###', '=====', '=====', '=====',
-    '^^^^^', '..+..', '..+..', '.....', '.....', ...r(5, '====='),
-    ...r(7, '.mm..'), '=====', '=o===',
-    ...r(3, '==...'), '.....', '.....', ...r(3, '...=='), '...o=', '.....', '.....', ...r(3, '.==..'), '=====',
-    '=====', '#####', '#####', '.....', '.....', '#####', '#####', '=====', '=====',
-    'iiiii', 'iiiii', '.....', '.....', 'iiiii', 'ii#ii', 'iiiii', '.....', '.....', '.....', '=====', '=====',
-    ...r(3, 'i...i'), 'o...o', 'i...i', '=====',
-    '>>>>>', '=====', '=====', '=====', '.*.*.', '.....', '.....', '.....', '=====', '=====',
-    ...r(7, '..mm.'), '=====',
-    'iiiii', 'i#i#i', 'iiiii', '#i#i#', 'iiiii', '=====',
-    '==O==', '=====', '.....', '.....', '.....', '=====',
-    ...r(5, '====='),
+    bar(run(), run(), on('=o=o='), hop()),
+    bar(run(), on('==o=='), run(), hop()),
+    bar(run('==...'), run('.==..'), on('..o=.', '..==.'), run('...==')),
+    bar(hop('...o='), run('.==..'), hop('.o=..'), run('...==')),
+    bar(run(), on('###=='), run(), run()),
+    bar(on('==###'), run(), run(), on('#==##')),
+    bar([F, F, '###..'], run('###..'), run('.###.'), run('..###')),
+    bar(['..###', F, F], on('==O=='), run(), hop()),
+    bar(run('.=.=.'), on('.o.=.', '.=.=.'), on('.=.o.', '.=.=.'), run()),
+    bar(pad('.+.+.', 4), run(), run()),
+    bar(run('..=..'), hop('..o..'), run('.=...'), hop('.=...')),
+    bar(run('..=..'), hop('..=..'), run('...=.'), on('...o.')),
+    bar(boost()),
+    bar(run(), run('==...'), hop('=o...'), run('..==.')),
+    bar(hop('..==.'), run('==...'), on('=o...'), run()),
+    bar(mount(), on('=o=o='), run()),
+  ]),
+};
+
+/** World 3 — fast slalom, three-lane side jumps, block-top hops and single-lane islands. */
+const toxicPulse: LevelDef = {
+  id: 'toxic-pulse', name: 'TOXIC PULSE', world: 2, speed: 28, song: 'toxic',
+  ...build([
+    bar(run(), run(), on('=o=o='), hop()),
+    bar(run(), leap(), run()),
+    bar(on('###=='), run(), on('==###'), run()),
+    bar(on('#==##'), run(), run('==...'), hop('=o...')),
+    bar(run('...=='), hop('...=o'), run('==...'), run()),
+    bar([F, F, '#####'], run('#####'), ['#####', '#####', G], ['#####', F, F]),
+    bar(on('==O=='), run('==...'), run('.==..'), run('..==.')),
+    bar(on('...o=', '...=='), run('..==.'), run('.==..'), on('.o=..')),
+    bar(boost()),
+    bar(pad('..+..'), run(), run()),
+    bar(on('###=#'), run(), on('#=###'), run()),
+    bar(on('##=##'), run('..=..'), hop('..=..'), run('=....')),
+    bar(hop('o....'), run('..=..'), hop('..=..'), run('....=')),
+    bar(on('....o'), on('=#=#='), hop(), run()),
+    bar(leap(), on('=o=o='), run()),
+    bar(mount(), on('==o=='), run()),
+  ]),
+};
+
+/** World 4 — ice with almost no grip and roads that sway to the music. */
+const frostLine: LevelDef = {
+  id: 'frost-line', name: 'FROST LINE', world: 3, speed: 29, song: 'frost',
+  ...build([
+    bar(run(), run(), on('=o=o='), hop()),
+    bar(run(), leap(), run()),
+    h('ice', 1),
+    bar(run('iiiii'), on('ii#ii', 'iiiii'), on('#iii#', 'iiiii'), on('i#i#i', 'iiiii')),
+    bar(on('ioioi', 'iiiii'), run('iii..', 2), run('.iii.')),
+    bar(run('.iii.'), run('..iii', 2), on('..ioi', '.iii.')),
+    bar(run(), hop(), run(), run()),
+    h('moving', 1),
+    bar(run('.mmm.', 4)),
+    bar(run('.mmm.', 2), run(), on('==o==')),
+    bar(on('###=='), run(), on('==###'), run()),
+    bar(pad('..+..'), run(), run()),
+    bar(run('.mm..', 3), run()),
+    bar(run('==...'), hop('==...'), run('...=='), on('...o=', '...==')),
+    bar(hop('...=='), run('.==..'), mount()),
+    bar(run('iiiii'), hop('iiiii'), on('ii#ii', 'iiiii'), run()),
+    bar(boost()),
+    bar(run('..mm.', 2), on('==O=='), run()),
   ]),
 };
 
 /** World 5 — rails to switch between, and a slow-motion stretch where gravity turns upside down. */
 const gravityWell: LevelDef = {
-  id: 'gravity-well',
-  name: 'GRAVITY WELL',
-  world: 4,
-  speed: 30,
-  bpm: 135,
+  id: 'gravity-well', name: 'GRAVITY WELL', world: 4, speed: 30, song: 'gravity',
   ...build([
-    ...r(6, '====='),
-    '=o=o=', '.....', '.....', '.....', '=====', '=====',
-    h('rail', 2),
-    ...r(3, '=|=|='), ...r(5, '.|.|.'), '=====', '=o=o=',
+    bar(run(), run(), on('=o=o='), hop()),
+    h('rail', -5),
+    bar(run(), run(), run('=|=|='), run('.|.|.')),
+    bar(run('.|.|.', 2), run(), on('=o=o=')),
     h('switch', 1),
-    ...r(4, '.|...'), ...r(4, '.||..'), ...r(4, '..|..'), ...r(4, '..||.'), ...r(3, '...|.'), '=====', '=====',
-    '###==', '=====', '=====', '=====', '=====', '==###', '=====', '=====', '=====', '=====',
-    ...r(3, '==...'), '.....', '.....', ...r(3, '...=='), '.....', '.....', ...r(3, '.==..'), '=====',
-    ...r(7, '.mm..'), '=====',
-    '=====', '#####', '#####', '.....', '.....', '#####', '.....', '.....', '.....', '=====', '=====',
-    'iiiii', 'i#i#i', 'iiiii', 'iiiii', '#iii#', 'iiiii', '=====', '=====', '=====',
+    bar(run('.|...'), run('.||..'), run('..|..'), run('..||.')),
+    bar(run('...|.'), run(), on('###=='), run()),
+    bar(on('==###'), run(), run('==...'), hop('==...')),
+    bar(run('...=='), hop('...=='), run('.==..'), run()),
+    bar(run('.mm..', 3), run()),
     h('flip', 3),
     FLIP_ON,
-    ...r(5, '====='),
-    '==#==', '=====', '=====', '=====', '#####', '=====', '=====', '=====',
-    '..*..', '.....', '..*..', '.....',
-    '=====', '=====', '#####', '#####', '=====', '=====',
-    '.....', '..+..', '.....', '..+..', '.....',
-    ...r(3, '====='),
+    bar(run(), run(), [F, F, '==#=='], run()),
+    bar([F, F, '#####'], run(), [F, '..*..', G], run()),
     FLIP_OFF,
-    ...r(7, '====='),
-    '^^^^^', '..+..', '..+..', '.....', '.....', ...r(6, '====='),
-    ...r(6, '..mm.'), '=====', '=====',
-    ...r(4, '.|.|.'), '=====', '=====',
-    '.....', '.....', '.....', '=====', '==o==',
-    ...r(5, '====='),
+    bar(run(), run(), on('=o=o='), run()),
+    bar(pad('..+..'), run(), run()),
+    bar(run('..mm.', 3), run()),
+    bar(run('.|.|.', 2), hop(), run()),
+    bar([F, F, '#####'], run('#####'), ['#####', '#####', G], ['#####', F, F]),
+    bar(run('iiiii'), on('i#i#i', 'iiiii'), on('==o=='), run()),
   ]),
 };
 
-/** World 6 — boost chains, a skyway on top of the blocks and side jumps at speed. */
+/** World 6 — boost jumps, a skyway with a hop between block tops, and side jumps at speed. */
 const emberRush: LevelDef = {
-  id: 'ember-rush',
-  name: 'EMBER RUSH',
-  world: 5,
-  speed: 31,
-  bpm: 160,
-  rows: [
-    ...r(6, '====='),
-    'o=o=o', '=====', '.....', '.....', '.....', '=====', '=====',
-    ...r(2, '==...'), ...r(2, '.==..'), ...r(2, '..==.'), ...r(3, '...=='), '...=o', '.....', '.....', ...r(3, '.==..'), '.o=..', '.....', '.....', ...r(3, '...=='), '=====', '=====',
-    '###==', '=====', '=====', '=====', '=====', '==###', '=====', '=====', '=====', '=====', '###==', '=====', '=====', '=====',
-    '>>>>>', '=====', '=====', '.*.*.', '.....', '.....', '.....', '=====', '=====', '=====', '=====',
-    '=====', '###..', '###..', '.###.', '.###.', '..###', '..###', '..###', '.....', '.....', '###..', '###..', '###..', '=====', '=====',
-    '=O=O=', '=====',
-    ...r(3, '=...='), '=...o', '.....', '.....', ...r(3, '..=..'), '..o..', '.....', '.....', ...r(3, '=...='), 'o...=', '=====',
-    '=====', '^^^^^', '.+.+.', '.+.+.', '.....', '.....', '.....', '=====', '=====', '=====', '=====',
-    '#=###', '=====', '=====', '=====', '=====', '###=#', '=====', '=====', '=====', '=====', '#=###', '=====', '=====',
-    ...r(3, '..=..'), '.....', '.....', ...r(3, '=....'), '.....', '.....', ...r(3, '..=..'), '.....', '.....', ...r(3, '....='), '.....', '.....', ...r(2, '..=..'), '=====',
-    '=====', '#####', '#####', '.....', '.....', '.....', '=====', '=====',
-    '>>>>>', '=====', '=====', '=====', '.*.*.', '.....', '.....', '.....', '=====', '=====',
-    ...r(5, '====='),
-  ],
+  id: 'ember-rush', name: 'EMBER RUSH', world: 5, speed: 31, song: 'ember',
+  ...build([
+    bar(run(), run(), on('o=o=o'), hop()),
+    bar(run(), leap(), run()),
+    bar(run('==...'), run('.==..'), run('..==.'), run('...==')),
+    bar(hop('...=o'), run('.==..'), hop('.o=..'), run('...==')),
+    bar(run(), on('###=='), run(), on('==###')),
+    bar(run(), on('###=='), run(), run()),
+    bar(boost()),
+    bar([F, F, '###..'], run('###..'), run('.###.'), run('..###')),
+    bar(['..###', G, G], run('###..'), run(), on('=O=O=')),
+    bar(run('=...='), hop('=...o'), run('..=..'), hop('..o..')),
+    bar(run('=...='), on('o...='), run(), run()),
+    bar(pad('.+.+.'), run(), run()),
+    bar(on('#=###'), run(), on('###=#'), run()),
+    bar(on('#=###'), run('..=..'), hop('..=..'), run('=....')),
+    bar(hop('=....'), run('..=..'), hop('..=..'), run('....=')),
+    bar(on('....='), mount(), run()),
+  ]),
 };
 
-/** World 7 (Volt Storm) — sliding roads that force lane changes, rail switching and long ice curves. */
+/** World 7 — roads that sway from edge to edge, rail switching and long ice curves. */
 const voltStorm: LevelDef = {
-  id: 'volt-storm',
-  name: 'VOLT STORM',
-  world: 6,
-  speed: 32,
-  bpm: 128,
-  rows: [
-    ...r(6, '====='),
-    '=o=o=', '=====', '.....', '.....', '.....', '=====', '=====',
-    ...r(8, '.mmm.'), '=====', '=====',
-    ...r(4, '.|...'), ...r(4, '.||..'), ...r(4, '..|..'), ...r(4, '..||.'), ...r(4, '...|.'), '=====', '=====',
-    'iiiii', 'ii#ii', 'iiiii', 'iiiii', '#iii#', 'iiiii', 'iiiii', '=====', '=====',
-    ...r(3, '==...'), '.....', '.....', ...r(3, '...=='), '...=o', '.....', '.....', ...r(3, '==...'), 'o=...', '=====', '=====',
-    ...r(7, 'mm...'), '=====', '=====', ...r(7, '...mm'), '=====', '=====',
-    '###==', '=====', '=====', '=====', '=====', '=====', '==###', '=====', '=====', '=====', '=====',
-    '^^^^^', '..+..', '..+..', '.....', '.....', '.....', ...r(5, '====='),
-    ...r(3, '.iii.'), ...r(5, 'iii..'), ...r(5, '.iii.'), ...r(5, '..iii'), '=====', '=====',
-    ...r(4, '.|.|.'), '.....', '.....', ...r(4, '..=..'), '=====', '=====',
-    '=====', '#####', '#####', '.....', '.....', '#####', '#####', '=====', '=====',
-    '>>>>>', '=====', '=====', '.*.*.', '.....', '.....', '.....', '=====', '=====', '=====',
-    ...r(6, '..mm.'), '=====',
-    '==O==', '=====', '.....', '.....', '.....', '=====',
-    ...r(5, '====='),
-  ],
+  id: 'volt-storm', name: 'VOLT STORM', world: 6, speed: 32, song: 'volt',
+  ...build([
+    bar(run(), run(), on('=o=o='), hop()),
+    bar(run(), leap(), run()),
+    bar(run('.mmm.', 4)),
+    bar(run('.mmm.', 2), on('==o=='), run()),
+    bar(run('.|...'), run('.||..'), run('..|..'), run('..||.')),
+    bar(run('...|.'), run('...||'), run('....|'), run()),
+    bar(run('iiiii'), on('ii#ii', 'iiiii'), on('#iii#', 'iiiii'), run()),
+    bar(run('==...'), hop('==...'), run('...=='), hop('...=o')),
+    bar(run('==...'), on('o=...'), run('mm...', 2)),
+    bar(run('mm...', 2), run(), run('...mm')),
+    bar(run('...mm', 3), run()),
+    bar(on('###=='), run(), on('==###'), run()),
+    bar(pad('..+..'), run(), run()),
+    bar(run('.iii.'), run('iii..', 2), run('.iii.')),
+    bar(run('..iii', 2), run(), run()),
+    bar(boost()),
+  ]),
 };
 
 /** World 8 — the finale: everything so far and two gravity-flip zones, the second one over open space. */
 const zeroPoint: LevelDef = {
-  id: 'zero-point',
-  name: 'ZERO POINT',
-  world: 7,
-  speed: 33,
-  bpm: 145,
+  id: 'zero-point', name: 'ZERO POINT', world: 7, speed: 33, song: 'zero',
   ...build([
-    ...r(6, '====='),
-    '=o=o=', '.....', '.....', '.....', '=====', '=====',
-    '###==', '=====', '=====', '=====', '=====', '=====', '==###', '=====', '=====', '=====', '=====', '=====',
-    ...r(3, '==...'), '.....', '.....', ...r(3, '...=='), '.....', '.....', ...r(3, '==...'), '=====', '=====', '=====',
+    bar(run(), run(), on('=o=o='), hop()),
+    bar(run(), leap(), run()),
+    bar(on('###=='), run(), on('==###'), run()),
+    bar(run('==...'), hop('==...'), run('...=='), hop('...==')),
+    bar(run('==...'), run(), run(), run()),
     FLIP_ON,
-    ...r(4, '====='),
-    '#####', '=====', '=====', '=====', '..*..', '.....', '..*..', '.....',
-    '=====', '#===#', '=====', '=====', '#####', '#####', '=====', '=====', '=====',
+    bar(run(), run(), [F, F, '#####'], run()),
+    bar([F, '..*..', G], run(), [F, F, '#===#'], [F, F, '#####']),
     FLIP_OFF,
-    ...r(7, '====='),
-    ...r(4, '.|...'), ...r(4, '.||..'), ...r(4, '..|..'), '=====', '=====',
-    ...r(7, '.mmm.'), '=====', '=====',
-    'iiiii', 'i#i#i', 'iiiii', 'iiiii', '#i#i#', 'iiiii', '=====', '=====',
-    '^^^^^', '..+..', '..+..', '.....', '.....', '.....', ...r(6, '====='),
-    '=====', '###..', '###..', '.###.', '.###.', '..###', '..###', '..###', '=====', '=====', '=====',
+    bar(run(), run(), on('=o=o='), run()),
+    bar(run('.|...'), run('.||..'), run('..|..'), run()),
+    bar(run('.mmm.', 3), run()),
+    bar(run('iiiii'), on('i#i#i', 'iiiii'), on('#i#i#', 'iiiii'), run()),
+    bar(pad('..+..'), run(), run()),
     FLIP_ON,
-    ...r(3, '====='),
-    '.....', '.+.+.', '.....', '.+.+.', '.....', '=====', '=====', '#####', '=====', '=====',
-    '.....', '..*..', '.....', '..*..', '.....',
-    ...r(4, '====='),
+    bar(run(), run(), [F, '.+.+.', G], [G, '.+.+.', G]),
+    bar(run(), [F, F, '#####'], run(), run()),
     FLIP_OFF,
-    ...r(7, '====='),
-    ...r(3, '..=..'), '.....', '.....', ...r(3, '=....'), '.....', '.....', ...r(3, '..=..'), '=====', '=====',
-    '>>>>>', '=====', '=====', '=====', '.*.*.', '.....', '.....', '.....', '=====', '=====',
-    ...r(5, '====='),
+    bar(run(), run(), run('..=..'), hop('..=..')),
+    bar(run('=....'), hop('=....'), run(), on('==o==')),
   ]),
 };
 

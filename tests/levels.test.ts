@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { CFG } from '../src/core/config';
+import { BAR_ROWS, CFG } from '../src/core/config';
 import { Level } from '../src/core/level';
 import { LEVELS } from '../src/core/levels';
 import { Sim, type ShipState } from '../src/core/sim';
 
 /** Depth-first search over coarse inputs: proves a level can be finished. */
-function solve(level: Level, HOLD = 6, from = 0, untilZ = Infinity): { ok: boolean; nodes: number; furthest: number } {
+/** How far from a beat (in beats) the rhythm bot may press jump: about a third of the time is open. */
+const BEAT_WINDOW = 0.17;
+
+function solve(level: Level, HOLD = 6, from = 0, untilZ = Infinity, onBeat = false): { ok: boolean; nodes: number; furthest: number } {
   const sim = new Sim(level);
   sim.trackGems = false;
   if (from > 0) sim.spawnAt(level.checkpoints[from]);
@@ -20,7 +23,10 @@ function solve(level: Level, HOLD = 6, from = 0, untilZ = Infinity): { ok: boole
   const dfs = (): boolean => {
     if (++nodes > 3_000_000) return false;
     const base = { ...sim.s };
+    const b = level.beatAt(base.z);
+    const beatOpen = !onBeat || Math.abs(b - Math.round(b)) <= BEAT_WINDOW;
     for (const [steer, jump] of actions) {
+      if (jump && !beatOpen) continue;
       sim.s = { ...base };
       for (let i = 0; i < HOLD && sim.s.alive && !sim.s.finished; i++) {
         sim.step({ steer, jumpPressed: jump && i === 0, jumpHeld: false });
@@ -46,6 +52,26 @@ describe('levels', () => {
       const res = solve(level);
       console.info(def.name, 'rows', level.length, 'secs', (level.finishZ / def.speed).toFixed(1), 'gems', level.gemCount, res);
       expect(res.ok, `stuck at row ${Math.floor(res.furthest / CFG.tileL)}`).toBe(true);
+    });
+  }
+});
+
+describe('rhythm', () => {
+  for (const def of LEVELS) {
+    const level = new Level(def);
+    it(`${def.name} is 16 whole bars and its flip zones sit on bar lines`, () => {
+      expect(level.length).toBe(16 * BAR_ROWS);
+      for (const [a, b] of def.flips ?? []) { expect(a % BAR_ROWS).toBe(0); expect(b % BAR_ROWS).toBe(0); }
+    });
+    it(`${def.name} can be finished pressing jump only on the beat`, () => {
+      const res = solve(level, 6, 0, Infinity, true);
+      expect(res.ok, `stuck at row ${Math.floor(res.furthest / CFG.tileL)} (bar ${Math.floor(res.furthest / CFG.tileL / BAR_ROWS) + 1})`).toBe(true);
+    });
+    it(`${def.name}: gems, pads and boosts are on beat rows (gems in the air may follow the beat row)`, () => {
+      def.rows.forEach((row, r) => {
+        const beatRow = r % CFG.rowsPerBeat === 0;
+        if (/[\^>oO]/.test(row)) expect(beatRow, `row ${r} "${row}" (bar ${Math.floor(r / BAR_ROWS) + 1})`).toBe(true);
+      });
     });
   }
 });
@@ -151,6 +177,17 @@ describe.each(LEVELS.filter((d) => d.flips && d.flips.length))('gravity flip in 
     expect(taps / (sim.s.time - t0)).toBeLessThan(2); // under two taps a second
   });
 
+  it('tapping exactly once per beat holds altitude all the way through', () => {
+    const sim = enter();
+    let last = Math.floor(level.beatAt(sim.s.z));
+    for (let i = 0; i < 3000 && sim.s.alive && sim.s.z < to * CFG.tileL - 1; i++) {
+      const beat = Math.floor(level.beatAt(sim.s.z));
+      sim.step({ steer: 0, jumpPressed: beat !== last && sim.s.flip, jumpHeld: false });
+      last = beat;
+    }
+    expect(sim.s.alive, `lost at row ${Math.floor(sim.s.z / CFG.tileL)}`).toBe(true);
+  });
+
   it('gravity returns after the zone', () => {
     const sim = enter();
     Object.assign(sim.s, { z: to * CFG.tileL - 2, y: 4, vy: 0, grounded: false, flip: true });
@@ -169,8 +206,8 @@ describe('sim', () => {
     const sim = new Sim(level);
     for (let i = 0; i < 2000 && sim.s.alive; i++) sim.step(idle);
     expect(sim.s.alive).toBe(false);
-    expect(sim.s.z).toBeGreaterThan(14 * CFG.tileL);
-    expect(sim.s.z).toBeLessThan(18 * CFG.tileL);
+    expect(sim.s.z).toBeGreaterThan(22 * CFG.tileL);
+    expect(sim.s.z).toBeLessThan(26 * CFG.tileL);
   });
 
   it('jump clears at least three tiles and collects gems', () => {

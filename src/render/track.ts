@@ -21,7 +21,7 @@ void main() {
   vec4 w = modelMatrix * instanceMatrix * vec4(p, 1.0);
   float ahead = -w.z - uShipZ;
   float far = smoothstep(105.0, 165.0, ahead);
-  if (aKind > 5.5 && aKind < 6.5) w.x += MOVE_AMP * sin(uSimT * MOVE_W - aRow * MOVE_K); // moving road, same formula as the sim
+  if (aKind > 5.5 && aKind < 6.5) w.x += MOVE_AMP * sin(uSimT * MOVE_W - aRow * MOVE_K); // moving road, same formula as the sim (uSimT = the ship's beat position)
   if (aKind < 4.5 || aKind > 5.5) {
     // the road assembles itself out of the distance
     w.y -= far * far * (8.0 + aSeed * 16.0);
@@ -165,7 +165,7 @@ export class Track {
     };
     const mat = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms,
-      defines: { MOVE_AMP: CFG.moveAmp.toFixed(4), MOVE_W: CFG.moveW.toFixed(4), MOVE_K: CFG.moveK.toFixed(4) },
+      defines: { MOVE_AMP: CFG.moveAmp.toFixed(4), MOVE_W: CFG.moveBeat.toFixed(5), MOVE_K: CFG.moveK.toFixed(5) },
     });
     const box = new THREE.BoxGeometry(1, 1, 1);
     this.disposables.push(mat, box);

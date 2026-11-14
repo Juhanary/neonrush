@@ -18,7 +18,7 @@ import { Track } from './track';
 export interface Pose {
   x: number; y: number; z: number; vx: number; vy: number; speed: number;
   grounded: boolean; boosting: boolean; alive: boolean;
-  /** Simulation time (moving tiles) and whether gravity is reversed. */
+  /** The ship's beat position (drives moving tiles) and whether gravity is reversed. */
   t: number; flip: boolean;
 }
 

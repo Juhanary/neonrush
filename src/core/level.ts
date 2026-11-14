@@ -1,4 +1,4 @@
-import { CFG, ROAD_W } from './config';
+import { BAR_ROWS, BEAT_LEN, CFG, ROAD_W } from './config';
 
 /**
  * Level format: one string per row, row 0 is nearest the start, one char per lane.
@@ -16,9 +16,14 @@ export interface LevelDef {
   name: string;
   world: number;
   speed: number;
-  /** Music tempo; visuals pulse on this beat. */
-  bpm: number;
+  /** Name of the song (audio/songs.ts). The tempo is not stored: it follows from the speed (Level.bpm). */
+  song: string;
   rows: string[];
+  /**
+   * Optional music intensity per bar, one digit 0..3 each (spaces ignored). Bars left out, or the whole
+   * string, fall back to the intensity derived from how busy the bar is.
+   */
+  energy?: string;
   /** Tutorial callouts: shown when the ship reaches `row` (may be fractional). */
   hints?: { row: number; key: string }[];
   /** Gravity-flip zones as [fromRow, toRow). */
@@ -81,9 +86,32 @@ export class Level {
 
   private moving: boolean[];
 
-  /** Sideways offset of the moving tiles in a row at a given simulation time. */
-  shift(row: number, time: number): number {
-    return CFG.moveAmp * Math.sin(time * CFG.moveW - row * CFG.moveK);
+  /** Tempo that keeps one beat = rowsPerBeat rows at this track's speed. */
+  get bpm(): number { return (this.def.speed * 60) / BEAT_LEN; }
+  /** Number of bars (rows are authored in whole bars). */
+  get bars(): number { return Math.ceil(this.length / BAR_ROWS); }
+  /** Beat position of a ship whose centre is at z. Fractional; beat 0 is the spawn point. */
+  beatAt(z: number): number { return (z - CFG.beatZ0) / BEAT_LEN; }
+  /** Upward pull inside a flip zone: chosen so that tapping once per (half-tempo) beat holds altitude. */
+  get flipGravity(): number { return (2 * CFG.flipThrust * this.def.speed * CFG.flipSpeed) / BEAT_LEN; }
+
+  /**
+   * Music intensity of a bar, 0 (intro / breather) .. 3 (everything). Derived from how much of the bar
+   * is not plain full-width floor, unless LevelDef.energy overrides it. Presentation only.
+   */
+  energyOf(bar: number): number {
+    const b = Math.max(0, Math.min(this.bars - 1, bar));
+    const o = this.def.energy?.replace(/\s/g, '')[b];
+    if (o !== undefined && o >= '0' && o <= '3') return +o;
+    if (b === 0) return 1;
+    let busy = 0;
+    for (let r = b * BAR_ROWS; r < (b + 1) * BAR_ROWS && r < this.length; r++) if (/[^=oO]/.test(this.rows[r])) busy++;
+    return busy <= 2 ? 1 : busy <= 7 ? 2 : 3;
+  }
+
+  /** Sideways offset of the moving tiles in a row when the ship is at beat position `beat`. */
+  shift(row: number, beat: number): number {
+    return CFG.moveAmp * Math.sin(beat * CFG.moveBeat - row * CFG.moveK);
   }
 
   inFlip(z: number): boolean {
@@ -110,8 +138,8 @@ export class Level {
     return this.rows[row][lane];
   }
 
-  /** Walkable surface height at a point, or null over a gap. `time` only matters for moving tiles. */
-  heightAt(x: number, z: number, time = 0): number | null {
+  /** Walkable surface height at a point, or null over a gap. `beat` (the ship's beat position) only matters for moving tiles. */
+  heightAt(x: number, z: number, beat = 0): number | null {
     const row = this.rowOf(z);
     const lane = this.laneOf(x);
     const t = this.tile(row, lane);
@@ -119,7 +147,7 @@ export class Level {
     if (t === '|') return Math.abs(x - this.laneCenter(lane)) <= CFG.railHalf ? 0 : null;
     if (t !== '.' && t !== '*' && t !== '+' && t !== 'm') return 0;
     if (row >= 0 && row < this.length && this.moving[row]) {
-      if (this.tile(row, this.laneOf(x - this.shift(row, time))) === 'm') return 0;
+      if (this.tile(row, this.laneOf(x - this.shift(row, beat))) === 'm') return 0;
     }
     return null;
   }

@@ -70,7 +70,7 @@ export class Sim {
 
   /**
    * Practice mode: start the run from a checkpoint instead of the start line.
-   * The clock is set to the nominal arrival time so moving roads are in a repeatable phase.
+   * Moving roads depend on the ship's beat position, not on the clock, so they are always in the same phase here.
    */
   spawnAt(cp: Checkpoint): void {
     this.reset();
@@ -82,7 +82,7 @@ export class Sim {
   }
 
   private h(x: number, z: number): number | null {
-    return this.level.heightAt(x, z, this.s.time);
+    return this.level.heightAt(x, z, this.level.beatAt(this.s.z));
   }
 
   step(input: InputState): void {
@@ -148,7 +148,7 @@ export class Sim {
         this.events.push({ type: 'thrust' });
       }
       s.grounded = false;
-      s.vy += CFG.flipGravity * dt;
+      s.vy += L.flipGravity * dt;
       s.y += s.vy * dt;
       if (ground !== null && s.vy < 0 && s.y <= ground) {
         s.y = ground;
@@ -215,7 +215,8 @@ export class Sim {
       const id = row * CFG.lanes + lane;
       if (!this.collected.has(id)) {
         const gy = gemHeight(t);
-        if (Math.abs(s.y + 0.5 - gy) < gemReach(t)) {
+        // picked up at the middle of the tile, where the gem is drawn and where the beat falls
+        if (s.z >= (row + 0.5) * CFG.tileL - 0.5 && Math.abs(s.y + 0.5 - gy) < gemReach(t)) {
           this.collected.add(id);
           this.events.push({ type: 'gem', x: L.laneCenter(lane), y: gy, z: (row + 0.5) * CFG.tileL, id });
         }

@@ -29,20 +29,35 @@ export const CFG = {
   stepTol: 0.3,
   fallY: -5,
 
-  /** Moving road ('m'): sideways offset = moveAmp * sin(time * moveW - row * moveK). */
+  /**
+   * The beat grid. One beat is `rowsPerBeat` rows of track, whatever the speed, so tempo = speed * 60 / 12 m.
+   * Beat 0 sounds when the ship's centre is at `beatZ0` (the spawn point), i.e. in the middle of row 0;
+   * every later beat falls in the middle of a row whose index is a multiple of rowsPerBeat (a "beat row").
+   * Music, visuals, moving roads and flip-zone gravity are all derived from this grid.
+   */
+  rowsPerBeat: 3,
+  beatsPerBar: 4,
+  beatZ0: 2,
+
+  /**
+   * Moving road ('m'): sideways offset = moveAmp * sin(beat * moveBeat - row * moveK), where `beat` is the
+   * ship's beat position. With these constants the road under the ship sways once every two bars.
+   */
   moveAmp: 2.4,
-  moveW: 3.0,
-  moveK: 0.25,
+  moveBeat: Math.PI / 2,
+  moveK: Math.PI / 12,
   /** Steering grip on ice, as a fraction of normal. */
   iceGrip: 0.16,
   /** Half width of a rail tile ('|'). */
   railHalf: 0.5,
-  /** Gravity-flip zones: upward pull, downward kick per tap, and the height where the ship is lost. */
-  flipGravity: 26,
+  /**
+   * Gravity-flip zones: downward kick per tap, and the height where the ship is lost.
+   * The upward pull is not a constant: Level.flipGravity sets it so that one tap per beat holds altitude.
+   */
   flipThrust: 8.5,
   flipCeil: 9.5,
-  /** Inside a zone the ship slows to this fraction of the track speed, braking hard on the way in. */
-  flipSpeed: 0.55,
+  /** Inside a zone the ship slows to this fraction of the track speed (so the music runs at half tempo), braking hard on the way in. */
+  flipSpeed: 0.5,
   flipBrake: 45,
 
   /** Practice mode: minimum rows between two checkpoints. */
@@ -55,3 +70,6 @@ export const CFG = {
 } as const;
 
 export const ROAD_W = CFG.lanes * CFG.tileW;
+/** Metres of track per beat, and rows per bar. */
+export const BEAT_LEN = CFG.rowsPerBeat * CFG.tileL;
+export const BAR_ROWS = CFG.rowsPerBeat * CFG.beatsPerBar;
