@@ -2,7 +2,7 @@ import type { SimEvent } from '../core/sim';
 
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
-type Style = 'house' | 'breaks' | 'halftime';
+type Style = 'house' | 'breaks' | 'halftime' | 'dnb' | 'acid';
 interface Song { style: Style; roots: number[]; chords: number[][]; lead: OscillatorType }
 const MIN = [0, 3, 7], MAJ = [0, 4, 7];
 /** One song per world, each in its own genre, key and tempo (tempo comes from the level). */
@@ -10,6 +10,8 @@ const SONGS: Song[] = [
   { style: 'house', roots: [45, 41, 48, 43], chords: [MIN, MAJ, MAJ, MAJ], lead: 'square' },      // A minor arpeggio house
   { style: 'breaks', roots: [50, 47, 43, 45], chords: [MAJ, MIN, MAJ, MAJ], lead: 'sawtooth' },   // D major supersaw breakbeat
   { style: 'halftime', roots: [40, 40, 41, 38], chords: [MIN, MIN, MAJ, MIN], lead: 'triangle' }, // E phrygian half-time wobble
+  { style: 'dnb', roots: [41, 44, 39, 37], chords: [MIN, MAJ, MAJ, MAJ], lead: 'sine' },          // F minor drum and bass with bells
+  { style: 'acid', roots: [45, 45, 43, 48], chords: [MIN, MIN, MAJ, MAJ], lead: 'sawtooth' },     // A minor acid techno
 ];
 
 /** Fully synthesised music and effects (no audio files to load). */
@@ -17,6 +19,8 @@ export class GameAudio {
   private ctx?: AudioContext;
   private master!: GainNode;
   private music!: GainNode;
+  private musicFilter!: BiquadFilterNode;
+  private lastWarn = 0;
   private sfx!: GainNode;
   private delay!: DelayNode;
   private noise!: AudioBuffer;
@@ -43,7 +47,9 @@ export class GameAudio {
       this.master = ctx.createGain();
       this.master.gain.value = this.muted ? 0 : 0.8;
       this.master.connect(comp).connect(ctx.destination);
-      this.music = ctx.createGain(); this.music.gain.value = 0; this.music.connect(this.master);
+      this.musicFilter = ctx.createBiquadFilter(); this.musicFilter.type = 'lowpass'; this.musicFilter.frequency.value = 20000; this.musicFilter.Q.value = 1;
+      this.musicFilter.connect(this.master);
+      this.music = ctx.createGain(); this.music.gain.value = 0; this.music.connect(this.musicFilter);
       this.sfx = ctx.createGain(); this.sfx.gain.value = 0.9; this.sfx.connect(this.master);
       this.delay = ctx.createDelay(1); this.delay.delayTime.value = 0.375;
       const fb = ctx.createGain(); fb.gain.value = 0.32;
@@ -73,6 +79,7 @@ export class GameAudio {
     this.song = SONGS[world % SONGS.length];
     this.stepDur = 60 / bpm / 4;
     this.delay.delayTime.setValueAtTime(this.stepDur * 3, this.ctx.currentTime);
+    this.muffle(false, 0.01);
     this.playing = true;
     this.step = 0;
     this.gemCombo = 0;
@@ -181,6 +188,43 @@ export class GameAudio {
     f.connect(g).connect(this.music);
     lfo.start(t); lfo.stop(t + dur + 0.02);
   }
+  /** Reversed gravity pushes the music "underwater"; leaving the zone opens it up again. */
+  private muffle(on: boolean, glide = 0.12): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, f = this.musicFilter;
+    f.frequency.cancelScheduledValues(t);
+    f.frequency.setTargetAtTime(on ? 620 : 20000, t, glide);
+    f.Q.setTargetAtTime(on ? 7 : 1, t, glide);
+  }
+  /** Squelchy 303-style note: saw through a resonant filter with its own envelope. */
+  private acid(note: number, t: number, dur: number, cut: number, peak: number): void {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth'; o.frequency.value = mtof(note);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.Q.value = 13;
+    f.frequency.setValueAtTime(cut, t);
+    f.frequency.exponentialRampToValueAtTime(260, t + dur);
+    const g = ctx.createGain();
+    this.env(g, t, peak, 0.004, dur);
+    o.connect(f).connect(g).connect(this.music);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  /** Glassy bell: a sine with an inharmonic partial. */
+  private bell(dest: AudioNode, note: number, t: number, peak: number): void {
+    this.tone(dest, 'sine', mtof(note), mtof(note), t, 0.5, peak);
+    this.tone(dest, 'sine', mtof(note) * 3.01, mtof(note) * 3.01, t, 0.12, peak * 0.45);
+  }
+  /** Proximity alarm for the gravity-flip ceiling (rate limited). */
+  warn(level: number): void {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    if (t - this.lastWarn < 0.3 - 0.16 * level) return;
+    this.lastWarn = t;
+    this.tone(this.sfx, 'square', 1250 + 500 * level, 1250 + 500 * level, t, 0.06, 0.1, 6000);
+  }
+
   private echo(): GainNode {
     const g = this.ctx!.createGain();
     g.connect(this.music); g.connect(this.delay);
@@ -224,6 +268,30 @@ export class GameAudio {
       if (s === 0 || s === 8) for (const iv of chord) this.tone(this.music, 'sawtooth', mtof(root + 12 + iv), mtof(root + 12 + iv), t, sd * 3, 0.045, 1800);
       if (H >= 1 && (s === 4 || s === 12)) this.hiss(this.music, t, 0.2, 0.16, 'highpass', 4000);
       if (H >= 2) { const n = root + 36 + chord[s % 3]; this.tone(this.echo(), 'square', mtof(n), mtof(n), t, sd * 0.8, 0.045, 5000); }
+    } else if (this.song.style === 'dnb') {
+      if (s === 0 || s === 10) this.kick(t, 1);
+      if (s === 4 || s === 12) this.snare(t, 0.5);
+      if (H >= 1 && (s === 7 || s === 15)) this.snare(t, 0.16);
+      this.hat(t, s % 2 === 0 ? 0.1 : H >= 1 ? 0.06 : 0.025, s === 14);
+      if (s === 0 || s === 8) {
+        for (const d of [-0.18, 0.18]) this.tone(this.music, 'sawtooth', mtof(root + d), mtof(root + d), t, sd * 7.6, 0.16, 520); // reese bass
+      }
+      const pent = [0, 3, 5, 7, 10, 12];
+      const i = [0, 3, 6, 9, 12, 14].indexOf(s);
+      if (i >= 0) this.bell(this.echo(), this.song.roots[0] + 36 + pent[(bar * 5 + i * 2) % 6], t, 0.13);
+      if (s === 0) for (const iv of chord) this.tone(this.music, 'triangle', mtof(root + 24 + iv), mtof(root + 24 + iv), t, sd * 15, 0.035);
+      if (H >= 2) { const n = root + 36 + chord[(s + bar) % 3] + (s % 4 === 3 ? 12 : 0); this.tone(this.echo(), 'square', mtof(n), mtof(n), t, sd * 0.7, 0.04, 5000); }
+    } else if (this.song.style === 'acid') {
+      if (s % 4 === 0) this.kick(t, 1);
+      if (s % 4 === 2) this.hat(t, 0.16, true);
+      if (bar >= 1 && (s === 4 || s === 12)) this.hiss(this.music, t, 0.12, 0.28, 'bandpass', 1500);
+      if (H >= 1) this.hat(t, 0.05);
+      const line = [0, 0, 12, 0, 3, 0, 12, 10, 0, 0, 7, 0, 12, 3, 0, 10];
+      const accent = s === 2 || s === 6 || s === 10 || s === 13;
+      const sweep = 700 + 1100 * (0.5 - 0.5 * Math.cos(bar * 0.8)) + (H >= 1 ? 500 : 0);
+      this.acid(root - 12 + line[s], t, sd * (accent ? 1.6 : 0.85), accent ? sweep * 2.2 : sweep, accent ? 0.3 : 0.2);
+      if (H >= 2 && s % 4 === 2) for (const iv of chord) this.supersaw(this.music, root + 24 + iv, t, sd * 1.4, 0.06);
+      if (s === 0 && bar % 4 === 3) this.hiss(this.music, t, sd * 16, 0.12, 'bandpass', 400, 6000);
     } else {
       if (s === 0 || s === 10 || (bar % 2 === 1 && s === 3)) this.kick(t, 1);
       if (s === 8) { this.snare(t, 0.6); this.hiss(this.music, t, 0.3, 0.2, 'lowpass', 3000); }
@@ -282,6 +350,26 @@ export class GameAudio {
         break;
       }
       case 'nearMiss': this.hiss(d, t, 0.16, 0.14, 'bandpass', 2500, 700); break;
+      case 'flipOn':
+        this.muffle(true);
+        this.tone(d, 'sawtooth', 1400, 60, t, 0.7, 0.3, 4000);
+        this.tone(d, 'sine', 90, 30, t, 0.6, 0.6);
+        this.hiss(d, t, 0.7, 0.3, 'bandpass', 6000, 300);
+        break;
+      case 'flipOff':
+        this.muffle(false);
+        this.tone(d, 'sawtooth', 70, 1500, t, 0.45, 0.25, 5000);
+        this.hiss(d, t, 0.5, 0.28, 'bandpass', 300, 7000);
+        [0, 7, 12].forEach((iv, i) => this.tone(d, 'triangle', mtof(72 + iv), mtof(72 + iv), t + 0.1 + i * 0.05, 0.2, 0.13));
+        break;
+      case 'thrust':
+        this.hiss(d, t, 0.09, 0.3, 'bandpass', 1100, 500);
+        this.tone(d, 'square', 240, 110, t, 0.08, 0.14, 1500);
+        break;
+      case 'fly':
+        this.tone(d, 'sine', 400, 2600, t, 0.3, 0.3);
+        this.hiss(d, t + 0.1, 0.5, 0.6, 'lowpass', 5000, 150);
+        break;
       case 'crash':
       case 'fall':
         this.hiss(d, t, 0.55, 0.7, 'lowpass', 5000, 150);

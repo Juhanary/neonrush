@@ -6,6 +6,9 @@ import { CFG, ROAD_W } from './config';
  *   ^  jump pad       >  boost pad      o  floor + gem
  *   O  floor + high gem (needs a jump)  *  gap + gem in the air
  *   +  gap + gem high on a jump-pad arc
+ *   m  moving road: slides sideways in a travelling wave
+ *   i  ice: steering has very little grip
+ *   |  rail: a narrow beam in the middle of the lane
  * Plain text so the same data loads unchanged in another engine.
  */
 export interface LevelDef {
@@ -18,6 +21,8 @@ export interface LevelDef {
   rows: string[];
   /** Tutorial callouts: shown when the ship reaches `row` (may be fractional). */
   hints?: { row: number; key: string }[];
+  /** Gravity-flip zones as [fromRow, toRow). */
+  flips?: [number, number][];
 }
 
 export class Level {
@@ -36,6 +41,22 @@ export class Level {
     let g = 0;
     for (const r of def.rows) for (const c of r) if (isGem(c)) g++;
     this.gemCount = g;
+    this.moving = def.rows.map((r) => r.includes('m'));
+  }
+
+  private moving: boolean[];
+
+  /** Sideways offset of the moving tiles in a row at a given simulation time. */
+  shift(row: number, time: number): number {
+    return CFG.moveAmp * Math.sin(time * CFG.moveW - row * CFG.moveK);
+  }
+
+  inFlip(z: number): boolean {
+    const f = this.def.flips;
+    if (!f) return false;
+    const row = z / CFG.tileL;
+    for (const [a, b] of f) if (row >= a && row < b) return true;
+    return false;
   }
 
   laneOf(x: number): number {
@@ -54,11 +75,18 @@ export class Level {
     return this.rows[row][lane];
   }
 
-  /** Walkable surface height at a point, or null over a gap. */
-  heightAt(x: number, z: number): number | null {
-    const t = this.tile(this.rowOf(z), this.laneOf(x));
-    if (t === '.' || t === '*' || t === '+') return null;
-    return t === '#' ? CFG.blockH : 0;
+  /** Walkable surface height at a point, or null over a gap. `time` only matters for moving tiles. */
+  heightAt(x: number, z: number, time = 0): number | null {
+    const row = this.rowOf(z);
+    const lane = this.laneOf(x);
+    const t = this.tile(row, lane);
+    if (t === '#') return CFG.blockH;
+    if (t === '|') return Math.abs(x - this.laneCenter(lane)) <= CFG.railHalf ? 0 : null;
+    if (t !== '.' && t !== '*' && t !== '+' && t !== 'm') return 0;
+    if (row >= 0 && row < this.length && this.moving[row]) {
+      if (this.tile(row, this.laneOf(x - this.shift(row, time))) === 'm') return 0;
+    }
+    return null;
   }
 }
 

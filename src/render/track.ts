@@ -6,24 +6,28 @@ import type { Palette } from './palette';
 const VERT = /* glsl */ `
 attribute float aKind;
 attribute float aSeed;
-uniform float uTime, uBeat, uShipZ;
+attribute float aRow;
+uniform float uTime, uBeat, uShipZ, uSimT, uFlip;
 varying vec3 vLocal, vScale, vWorld;
 varying float vKind, vSeed, vAhead;
 void main() {
   vLocal = position; vKind = aKind; vSeed = aSeed;
   vec3 p = position;
   vScale = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
-  if (aKind > 4.5) {
+  if (aKind > 4.5 && aKind < 5.5) {
     float k = 1.0 + (0.06 + 0.16 * aSeed) * uBeat + 0.05 * sin(uTime * 1.3 + aSeed * 40.0);
     p.y = (p.y + 0.5) * k - 0.5;
   }
   vec4 w = modelMatrix * instanceMatrix * vec4(p, 1.0);
   float ahead = -w.z - uShipZ;
   float far = smoothstep(105.0, 165.0, ahead);
-  if (aKind < 4.5) {
+  if (aKind > 5.5 && aKind < 6.5) w.x += MOVE_AMP * sin(uSimT * MOVE_W - aRow * MOVE_K); // moving road, same formula as the sim
+  if (aKind < 4.5 || aKind > 5.5) {
     // the road assembles itself out of the distance
     w.y -= far * far * (8.0 + aSeed * 16.0);
     w.x += far * far * (aSeed - 0.5) * 7.0;
+    // reversed gravity makes the whole road tremble
+    if (aKind < 8.5) w.y += sin(uTime * 19.0 + aSeed * 40.0) * 0.07 * uFlip;
   }
   vAhead = ahead; vWorld = w.xyz;
   gl_Position = projectionMatrix * viewMatrix * w;
@@ -31,7 +35,7 @@ void main() {
 
 const FRAG = /* glsl */ `
 uniform vec3 uFloor, uEdge, uBlock, uBlockEdge, uAccent, uFog, uGlow;
-uniform float uTime, uBeat, uHype, uRec;
+uniform float uTime, uBeat, uHype, uRec, uFlip;
 uniform vec3 uPulse; // x, z, age
 vec3 hue(float h) { return 0.5 + 0.5 * cos(6.2832 * (h + vec3(0.0, 0.33, 0.67))); }
 varying vec3 vLocal, vScale, vWorld;
@@ -78,11 +82,31 @@ void main() {
     float chk = mod(floor(vLocal.x * 4.0 + 8.0) + floor(vLocal.z * 4.0 + 8.0), 2.0);
     base = mix(uFloor * 0.6, vec3(0.9), top ? chk * 0.55 : 0.0);
     ecol = uAccent; gain = 2.0;
+  } else if (vKind > 5.5 && vKind < 6.5) {   // moving road: sideways arrows
+    float ar = fract(abs(vLocal.x) * 2.4 - abs(vLocal.z) * 1.2 - uTime * 1.6);
+    base = uFloor * 0.6;
+    if (top) base += uAccent * smoothstep(0.55, 0.7, ar) * smoothstep(1.0, 0.85, ar) * 0.5;
+    ecol = uAccent; gain = 1.5 + 0.5 * uBeat;
+  } else if (vKind > 6.5 && vKind < 7.5) {   // ice: pale, glossy, sparkling
+    vec3 ice = vec3(0.42, 0.68, 0.95);
+    float streak = smoothstep(0.75, 1.0, sin(vWorld.x * 2.3 + vWorld.z * 0.9));
+    float spark = step(0.985, fract(sin(dot(floor(vWorld.xz * 3.0), vec2(12.9898, 78.233))) * 43758.5453 + uTime * 0.7));
+    base = mix(uFloor, ice, top ? 0.42 + 0.2 * streak : 0.25) * 0.6;
+    if (top) base += vec3(1.0) * spark * 0.8;
+    ecol = vec3(0.75, 0.93, 1.0); gain = 0.95 + 0.35 * uBeat;
+  } else if (vKind > 7.5 && vKind < 8.5) {   // rail: a bright narrow beam
+    float run = 0.5 + 0.5 * sin(vWorld.z * 1.4 + uTime * 9.0);
+    base = uEdge * (0.3 + 0.3 * run);
+    ecol = uEdge; gain = 1.9 + 0.6 * uBeat;
+  } else if (vKind > 8.5) {     // ceiling of a gravity-flip zone: obstacle colour, it kills
+    base = uBlock * (0.6 + 0.5 * sin(uTime * 12.0 + vWorld.z * 0.5));
+    ecol = uBlockEdge; gain = 2.2;
   } else {                      // skyline pillar
     float band = smoothstep(0.82, 0.9, fract(vWorld.y * 0.22 + vSeed * 7.0 - uTime * 0.25));
     base = uFloor * 0.32 + uGlow * band * 0.3;
     ecol = mix(uEdge, uGlow, vSeed); gain = 0.45 + 0.7 * uBeat * vSeed;
   }
+  gain *= 1.0 + 0.45 * uFlip * (0.5 + 0.5 * sin(uTime * 14.0 - vAhead * 0.4));
   vec3 col = base + ecol * (edge * gain + halo * 0.08 * gain);
 
   float pd = length(vWorld.xz - uPulse.xy);
@@ -99,11 +123,14 @@ export interface TrackUniforms {
   uTime: THREE.IUniform<number>; uBeat: THREE.IUniform<number>; uShipZ: THREE.IUniform<number>;
   uPulse: THREE.IUniform<THREE.Vector3>;
   uHype: THREE.IUniform<number>; uRec: THREE.IUniform<number>;
+  uSimT: THREE.IUniform<number>; uFlip: THREE.IUniform<number>;
 }
 
 function hdr(hex: number, k: number): THREE.Color {
   return new THREE.Color(hex).multiplyScalar(k);
 }
+
+interface Item { m: THREE.Matrix4; kind: number; seed: number; row: number }
 
 export function rng(seed: number): () => number {
   let a = seed >>> 0;
@@ -128,20 +155,23 @@ export class Track {
     const col = (h: number) => ({ value: new THREE.Color(h) });
     this.uniforms = {
       uTime: { value: 0 }, uBeat: { value: 0 }, uShipZ: { value: 0 },
-      uPulse: { value: new THREE.Vector3(0, 0, 99) }, uHype: { value: 0 }, uRec: { value: 0 },
+      uPulse: { value: new THREE.Vector3(0, 0, 99) }, uHype: { value: 0 }, uRec: { value: 0 }, uSimT: { value: 0 }, uFlip: { value: 0 },
       uFloor: col(pal.floor), uEdge: col(pal.edge), uBlock: col(pal.block), uBlockEdge: col(pal.blockEdge),
       uAccent: col(pal.accent), uFog: col(pal.fog), uGlow: col(pal.glow),
     };
-    const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms });
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms,
+      defines: { MOVE_AMP: CFG.moveAmp.toFixed(4), MOVE_W: CFG.moveW.toFixed(4), MOVE_K: CFG.moveK.toFixed(4) },
+    });
     const box = new THREE.BoxGeometry(1, 1, 1);
     this.disposables.push(mat, box);
     const rand = rng(level.length * 7919 + level.def.world);
 
     // ---- tiles ----------------------------------------------------------
-    const items: { m: THREE.Matrix4; kind: number; seed: number }[] = [];
-    const add = (x: number, y: number, z: number, sx: number, sy: number, sz: number, kind: number) => {
+    const items: Item[] = [];
+    const add = (x: number, y: number, z: number, sx: number, sy: number, sz: number, kind: number, row = 0) => {
       const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, -z), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz));
-      items.push({ m, kind, seed: rand() });
+      items.push({ m, kind, seed: rand(), row });
     };
     const tw = CFG.tileW * 0.955, tl = CFG.tileL * 0.965;
     for (let row = 0; row < level.length + CFG.runway; row++) {
@@ -150,13 +180,32 @@ export class Track {
         if (t === '.' || t === '*' || t === '+') continue;
         const x = level.laneCenter(lane), z = (row + 0.5) * CFG.tileL;
         if (t === '#') add(x, CFG.blockH / 2 - 0.25, z, tw, CFG.blockH + 0.5, tl, 1);
-        else add(x, -0.25, z, tw, 0.5, tl, row >= level.length ? 4 : t === '^' ? 2 : t === '>' ? 3 : 0);
+        else if (t === '|') add(x, -0.2, z, CFG.railHalf * 2, 0.4, CFG.tileL * 1.0, 8);
+        else if (t === 'm') add(x, -0.25, z, tw, 0.5, tl, 6, row);
+        else add(x, -0.25, z, tw, 0.5, tl, row >= level.length ? 4 : t === '^' ? 2 : t === '>' ? 3 : t === 'i' ? 7 : 0);
+      }
+    }
+    // ---- gravity-flip zones: a deadly ceiling grid and a portal at each end ----
+    for (const [from, to] of level.def.flips ?? []) {
+      const y = CFG.flipCeil + 1.3;
+      for (let row = from; row < to; row += 2) add(0, y, (row + 0.5) * CFG.tileL, ROAD_W + 5, 0.22, 0.22, 9);
+      for (const side of [-1, 1]) add(side * (ROAD_W / 2 + 2.5), y, ((from + to) / 2) * CFG.tileL, 0.22, 0.22, (to - from) * CFG.tileL, 9);
+      for (const [row, hex] of [[from, 0xffffff], [to, pal.accent]] as [number, number][]) {
+        for (let k = 0; k < 3; k++) {
+          const geo = new THREE.TorusGeometry(8.5 + k * 1.6, 0.2, 6, [40, 3, 5][k]);
+          const m = new THREE.MeshBasicMaterial({ color: hdr(k === 0 ? hex : pal.edge, 1.3) });
+          this.disposables.push(geo, m);
+          const ring = new THREE.Mesh(geo, m);
+          ring.position.set(0, 4, -row * CFG.tileL);
+          this.spinners.push({ o: ring, s: [1.4, -2.2, 3][k] });
+          this.group.add(ring);
+        }
       }
     }
     this.group.add(this.instanced(box, mat, items));
 
     // ---- skyline --------------------------------------------------------
-    const pillars: typeof items = [];
+    const pillars: Item[] = [];
     const total = level.finishZ + 220;
     for (let z = -40; z < total; z += 7) {
       for (const side of [-1, 1]) {
@@ -167,7 +216,7 @@ export class Track {
         const topY = (far ? -2 : -16) + rand() * (far ? 24 : 12);
         const m = new THREE.Matrix4().compose(
           new THREE.Vector3(x, topY - h / 2, -(z + rand() * 5)), new THREE.Quaternion(), new THREE.Vector3(wdt, h, wdt));
-        pillars.push({ m, kind: 5, seed: rand() });
+        pillars.push({ m, kind: 5, seed: rand(), row: 0 });
       }
     }
     this.group.add(this.instanced(box, mat, pillars));
@@ -239,16 +288,15 @@ export class Track {
     this.portal.add(new THREE.Mesh(discGeo, discMat));
     this.group.add(this.portal);
 
-    // suppress unused warning for road width (kept for future side rails)
-    void ROAD_W;
   }
 
-  private instanced(geo: THREE.BufferGeometry, mat: THREE.Material, items: { m: THREE.Matrix4; kind: number; seed: number }[]) {
+  private instanced(geo: THREE.BufferGeometry, mat: THREE.Material, items: Item[]) {
     const g = geo.clone();
     this.disposables.push(g);
     const mesh = new THREE.InstancedMesh(g, mat, items.length);
-    const kind = new Float32Array(items.length), seed = new Float32Array(items.length);
-    items.forEach((it, i) => { mesh.setMatrixAt(i, it.m); kind[i] = it.kind; seed[i] = it.seed; });
+    const kind = new Float32Array(items.length), seed = new Float32Array(items.length), row = new Float32Array(items.length);
+    items.forEach((it, i) => { mesh.setMatrixAt(i, it.m); kind[i] = it.kind; seed[i] = it.seed; row[i] = it.row; });
+    g.setAttribute('aRow', new THREE.InstancedBufferAttribute(row, 1));
     g.setAttribute('aKind', new THREE.InstancedBufferAttribute(kind, 1));
     g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 1));
     mesh.frustumCulled = false;
@@ -266,9 +314,9 @@ export class Track {
     this.uniforms.uPulse.value.set(x, -z, 0);
   }
 
-  update(dt: number, time: number, beat: number, shipZ: number, hype = 0, rec = 0): void {
+  update(dt: number, time: number, beat: number, shipZ: number, hype = 0, rec = 0, simT = 0, flip = 0): void {
     const u = this.uniforms;
-    u.uHype.value = hype; u.uRec.value = rec;
+    u.uHype.value = hype; u.uRec.value = rec; u.uSimT.value = simT; u.uFlip.value = flip;
     u.uTime.value = time; u.uBeat.value = beat; u.uShipZ.value = shipZ;
     u.uPulse.value.z += dt;
     for (const sp of this.spinners) sp.o.rotation.z += sp.s * dt;

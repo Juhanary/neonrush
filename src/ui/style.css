@@ -101,3 +101,12 @@ h2 { margin: 0 0 6px; font-size: clamp(24px, 6vw, 48px); font-weight: 900; font-
   .stats br { display: none; } .stats b { margin-right: 14px; font-size: 17px; }
   #stars { font-size: 38px; }
 }
+#danger { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(255, 40, 60, .75) 100%); }
+#tap { position: fixed; right: calc(9% + env(safe-area-inset-right)); bottom: calc(22% + env(safe-area-inset-bottom)); pointer-events: none; display: none;
+  padding: 14px 22px; border-radius: 999px; font-weight: 900; font-style: italic; font-size: clamp(18px, 4.5vw, 30px); letter-spacing: .08em;
+  color: #0a0a3c; background: #fff; box-shadow: 0 0 26px #fff, 0 0 60px var(--b); animation: tap .22s ease-in-out infinite alternate; }
+#tap.on { display: block; }
+@keyframes tap { from { transform: scale(1); } to { transform: scale(1.22); } }
+#levels .card { width: clamp(118px, 17vw, 180px); }
+@media (orientation: portrait) { #levels .card { width: clamp(130px, 42vw, 200px); } .panel { overflow-y: auto; justify-content: flex-start; } }

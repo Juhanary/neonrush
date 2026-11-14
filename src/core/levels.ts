@@ -5,16 +5,24 @@ const r = (n: number, row: string): string[] => Array<string>(n).fill(row);
 /** A hint marker inside a row list: shown `lead` rows before the row that follows it. `hint` is a text key (ui/i18n.ts). */
 interface Hint { hint: string; lead: number }
 const h = (hint: string, lead = 0): Hint => ({ hint, lead });
+/** Markers that open and close a gravity-flip zone at the row that follows. */
+interface Flip { flip: 'on' | 'off' }
+const FLIP_ON: Flip = { flip: 'on' }, FLIP_OFF: Flip = { flip: 'off' };
 
-function build(items: (string | Hint)[]): Pick<LevelDef, 'rows' | 'hints'> {
+function build(items: (string | Hint | Flip)[]): Pick<LevelDef, 'rows' | 'hints' | 'flips'> {
   const rows: string[] = [];
   const hints: { row: number; key: string }[] = [];
+  const flips: [number, number][] = [];
+  let open = -1;
   for (const it of items) {
     if (typeof it === 'string') rows.push(it);
-    else hints.push({ row: rows.length - it.lead, key: it.hint });
+    else if ('flip' in it) {
+      if (it.flip === 'on') open = rows.length;
+      else if (open >= 0) { flips.push([open, rows.length]); open = -1; }
+    } else hints.push({ row: rows.length - it.lead, key: it.hint });
   }
   hints.sort((a, b) => a.row - b.row);
-  return { rows, hints };
+  return { rows, hints, flips };
 }
 
 /** World 1 — wide roads, single ideas introduced one at a time, with tutorial callouts. */
@@ -125,4 +133,72 @@ const toxicPulse: LevelDef = {
   ],
 };
 
-export const LEVELS: LevelDef[] = [cyanDrift, solarFlare, toxicPulse];
+/** World 4 — ice with almost no grip and roads that slide sideways in a wave. */
+const frostLine: LevelDef = {
+  id: 'frost-line',
+  name: 'FROST LINE',
+  world: 3,
+  speed: 29,
+  bpm: 172,
+  ...build([
+    ...r(6, '====='),
+    '=o=o=', '=====', '.....', '.....', '.....', '=====', '=====',
+    h('ice', 2),
+    ...r(3, 'iiiii'), 'ii#ii', 'iiiii', 'iiiii', '#iii#', 'iiiii', 'iiiii', 'i#i#i', 'iiiii', 'ioioi',
+    '.iii.', '.iii.', '.ioi.', '.iii.', '=====',
+    '=====', '.....', '.....', '=====', '=====',
+    h('moving', 3),
+    ...r(9, '.mmm.'), '=====', '==o==',
+    '=#=#=', '=====', '=====', '#=#=#', '=====', '=====',
+    '^^^^^', '..+..', '..+..', '.....', '.....', ...r(5, '====='),
+    ...r(7, '.mm..'), '=====', '=o===',
+    '=====', '#####', '#####', '.....', '.....', '#####', '#####', '=====', '=====',
+    'iiiii', 'iiiii', '.....', '.....', 'iiiii', 'ii#ii', 'iiiii', '.....', '.....', '.....', '=====', '=====',
+    ...r(3, 'i...i'), 'o...o', 'i...i', '=====',
+    '>>>>>', '=====', '=====', '=====', '.*.*.', '.....', '.....', '.....', '=====', '=====',
+    ...r(7, '..mm.'), '=====',
+    'iiiii', 'i#i#i', 'iiiii', '#i#i#', 'iiiii', '=====',
+    '==O==', '=====', '.....', '.....', '.....', '=====',
+    ...r(5, '====='),
+  ]),
+};
+
+/** World 5 — rails, everything from before, and a stretch where gravity turns upside down. */
+const gravityWell: LevelDef = {
+  id: 'gravity-well',
+  name: 'GRAVITY WELL',
+  world: 4,
+  speed: 30,
+  bpm: 135,
+  ...build([
+    ...r(6, '====='),
+    '=o=o=', '.....', '.....', '.....', '=====', '=====',
+    h('rail', 2),
+    ...r(3, '=|=|='), ...r(5, '.|.|.'), '=====', '=o=o=',
+    '=#=#=', '=====', '=====', '#=#=#', '=====', '=====',
+    ...r(5, '..|..'), '=====', '=====',
+    '.....', '.....', '.....', '=====', '=====',
+    ...r(7, '.mm..'), '=====',
+    '=====', '#####', '#####', '.....', '.....', '#####', '.....', '.....', '.....', '=====', '=====',
+    'iiiii', 'i#i#i', 'iiiii', 'iiiii', '#iii#', 'iiiii', '=====', '=====', '=====',
+    h('flip', 3),
+    FLIP_ON,
+    ...r(5, '====='),
+    '==#==', '=====', '=====', '#===#', '=====', '=====',
+    '..*..', '..*..', '.....', '..*..', '.....',
+    '=====', '=====', '#####', '=====', '=====',
+    '.....', '..+..', '.....', '..+..', '.....', '..+..', '.....',
+    '=====', '=#=#=', '=====', '=====', '#=#=#', '=====',
+    '.....', '.*.*.', '.....', '.....', '.*.*.', '.....',
+    ...r(4, '====='),
+    FLIP_OFF,
+    ...r(7, '====='),
+    '^^^^^', '..+..', '..+..', '.....', '.....', ...r(6, '====='),
+    ...r(6, '..mm.'), '=====', '=====',
+    ...r(4, '.|.|.'), '=====', '=====',
+    '.....', '.....', '.....', '=====', '==o==',
+    ...r(5, '====='),
+  ]),
+};
+
+export const LEVELS: LevelDef[] = [cyanDrift, solarFlare, toxicPulse, frostLine, gravityWell];

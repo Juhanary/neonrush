@@ -29,6 +29,19 @@ export const CFG = {
   stepTol: 0.3,
   fallY: -5,
 
+  /** Moving road ('m'): sideways offset = moveAmp * sin(time * moveW - row * moveK). */
+  moveAmp: 2.4,
+  moveW: 3.0,
+  moveK: 0.25,
+  /** Steering grip on ice, as a fraction of normal. */
+  iceGrip: 0.16,
+  /** Half width of a rail tile ('|'). */
+  railHalf: 0.5,
+  /** Gravity-flip zones: upward pull, downward kick per tap, and the height where the ship is lost. */
+  flipGravity: 55,
+  flipThrust: 10,
+  flipCeil: 9.5,
+
   /** Fixed simulation step. */
   dt: 1 / 120,
   /** Floor rows appended after the finish line. */

@@ -27,6 +27,12 @@ Input.sample() -> Sim.step() x N (fixed dt) -> Sim.events -> View.onEvent / Game
 | `o` | floor with a gem |
 | `O` | floor with a high gem (needs a jump) |
 | `*` | gap with a gem in the air |
+| `+` | gap with a gem high on a jump-pad arc |
+| `m` | moving road: slides sideways as `moveAmp * sin(time * moveW - row * moveK)` (sim and shader share the constants) |
+| `i` | ice: steering grip drops to `iceGrip` |
+| `\|` | rail: a narrow beam in the middle of the lane |
+
+Gravity-flip zones are row ranges (`LevelDef.flips`). Inside one, gravity pulls up, each tap kicks the ship down, and rising past `flipCeil` loses the ship. Tutorial callouts are `LevelDef.hints` (text keys, translated in `src/ui/i18n.ts`).
 
 Tiles are 2.4 m wide and 4 m long, five lanes. At the base speed of 24 m/s one beat (120 BPM) is three rows.
 

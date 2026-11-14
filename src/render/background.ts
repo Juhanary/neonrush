@@ -4,7 +4,7 @@ import { rng } from './track';
 
 const SKY_FRAG = /* glsl */ `
 uniform vec3 uTop, uHorizon, uBottom, uGlow, uPlanetA, uPlanetB;
-uniform float uTime, uBeat, uHype, uRec;
+uniform float uTime, uBeat, uHype, uRec, uFlip;
 varying vec3 vDir;
 vec3 hue(float h) { return 0.5 + 0.5 * cos(6.2832 * (h + vec3(0.0, 0.33, 0.67))); }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -58,6 +58,9 @@ void main() {
   float hidden = (ry > 0.0 && ang < R) ? 0.0 : 1.0;
   col += uGlow * ringm * hidden * 0.9;
 
+  // reversed gravity: colours swap channels and bright bands race upwards
+  col = mix(col, col.brg * 0.8, uFlip * 0.9);
+  col += uGlow.brg * smoothstep(0.86, 1.0, sin(h * 34.0 - uTime * 9.0)) * 0.12 * uFlip * smoothstep(-0.2, 0.2, h);
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -74,7 +77,7 @@ export class Background {
   constructor(pal: Palette, lengthZ: number) {
     const col = (h: number) => ({ value: new THREE.Color(h) });
     this.skyU = {
-      uTime: { value: 0 }, uBeat: { value: 0 }, uHype: { value: 0 }, uRec: { value: 0 },
+      uTime: { value: 0 }, uBeat: { value: 0 }, uHype: { value: 0 }, uRec: { value: 0 }, uFlip: { value: 0 },
       uTop: col(pal.top), uHorizon: col(pal.horizon), uBottom: col(pal.bottom), uGlow: col(pal.glow),
       uPlanetA: col(pal.planetA), uPlanetB: col(pal.planetB),
     };
@@ -114,15 +117,15 @@ export class Background {
     for (let i = 0; i < p.length; i++) p[i] = Math.random();
     const mg = new THREE.BufferGeometry();
     mg.setAttribute('position', new THREE.BufferAttribute(p, 3));
-    this.moteU = { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uScale: { value: 600 }, uCol: { value: new THREE.Color(pal.glow).lerp(new THREE.Color(1, 1, 1), 0.3) } };
+    this.moteU = { uLift: { value: 0 }, uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uScale: { value: 600 }, uCol: { value: new THREE.Color(pal.glow).lerp(new THREE.Color(1, 1, 1), 0.3) } };
     const mm = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: this.moteU,
       vertexShader: /* glsl */ `
-        uniform vec3 uCam; uniform float uTime, uScale; varying float vA;
+        uniform vec3 uCam; uniform float uTime, uScale, uLift; varying float vA;
         void main() {
           vec3 box = vec3(70.0, 34.0, 150.0);
           vec3 p = position * box;
-          p.y += uTime * (0.6 + position.x * 1.2);
+          p.y += uTime * (0.6 + position.x * 1.2) + uLift * (0.6 + position.z);
           p = mod(p - uCam, box) - box * vec3(0.5, 0.4, 0.92) + uCam;
           vA = 0.5 + 0.5 * sin(uTime * 2.5 + position.z * 90.0);
           vec4 mv = viewMatrix * vec4(p, 1.0);
@@ -139,7 +142,9 @@ export class Background {
 
   setScale(px: number): void { this.moteU.uScale.value = px; }
 
-  update(dt: number, time: number, beat: number, cam: THREE.Vector3, hype = 0, rec = 0): void {
+  update(dt: number, time: number, beat: number, cam: THREE.Vector3, hype = 0, rec = 0, flip = 0): void {
+    this.skyU.uFlip.value = flip;
+    this.moteU.uLift.value += dt * flip * 22;
     this.skyU.uTime.value = time; this.skyU.uBeat.value = beat;
     this.skyU.uHype.value = hype; this.skyU.uRec.value = rec;
     this.sky.position.copy(cam);

@@ -25,4 +25,16 @@ export const PALETTES: Palette[] = [
     accent: 0x3af0ff, gem: 0x3af0ff, trail: 0x9dff3a, planetA: 0xc86aff, planetB: 0x4a22c0,
     css: '#9dff3a', css2: '#3af0ff',
   },
+  { // Frost Line
+    top: 0x0a1660, horizon: 0x2f86e8, bottom: 0x081244, glow: 0x7ac8ff, fog: 0x2c66c8,
+    floor: 0x16307e, edge: 0x7fdcff, block: 0xff5a1f, blockEdge: 0xffa66a,
+    accent: 0x7dffb4, gem: 0xfff27a, trail: 0x8fdcff, planetA: 0xa8d8ff, planetB: 0x3a5ae0,
+    css: '#bfeaff', css2: '#7dffb4',
+  },
+  { // Gravity Well
+    top: 0x2c0a72, horizon: 0xff2a6e, bottom: 0x14002e, glow: 0xff9a3a, fog: 0xa81a72,
+    floor: 0x4a1a90, edge: 0xff4fd8, block: 0x2affd0, blockEdge: 0xa4ffec,
+    accent: 0xffe53a, gem: 0xffffff, trail: 0xff7ae6, planetA: 0xff6a2a, planetB: 0x7a0aa0,
+    css: '#ff4fd8', css2: '#ffe53a',
+  },
 ];

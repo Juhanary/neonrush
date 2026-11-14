@@ -17,6 +17,8 @@ import { Track } from './track';
 export interface Pose {
   x: number; y: number; z: number; vx: number; vy: number; speed: number;
   grounded: boolean; boosting: boolean; alive: boolean;
+  /** Simulation time (moving tiles) and whether gravity is reversed. */
+  t: number; flip: boolean;
 }
 
 const QUALITY = [2.5, 2, 1.5, 1.25, 1];
@@ -56,6 +58,8 @@ export class View {
   private hv = 0;
   private rv = 0;
   private dots = 0;
+  private fv = 0;
+  private lift = 0;
   private rainbow = new THREE.Color();
   private rainbowDim = new THREE.Color();
   shipId = DEFAULT_SHIP;
@@ -111,7 +115,7 @@ export class View {
     this.waves.clear();
     for (const r of this.ribbons) r.reset();
     this.shake = 0; this.squash = 0; this.kick = 0; this.roll = 0; this.camX = 0; this.camY = 0;
-    this.hype = 0; this.hv = 0; this.rv = 0;
+    this.hype = 0; this.hv = 0; this.rv = 0; this.fv = 0;
     this.flash = Math.max(this.flash, 0.25);
   }
 
@@ -190,7 +194,30 @@ export class View {
       case 'nearMiss':
         P.burst(x + e.side * 0.8, y, z, 10, 6, 0.3, 0.22, c.block, { vz: fwd * 0.4 });
         break;
+      case 'flipOn':
+        P.burst(x, y, z, 90, 20, 1.0, 0.45, c.white, { up: 14, vz: fwd * 0.9, drag: 1.2 });
+        P.burst(x, y, z, 60, 16, 1.0, 0.4, c.accent, { up: 18, vz: fwd * 0.9, drag: 1.2 });
+        this.waves.spawn(x, y, z, c.white, 18, 0.7, true);
+        this.waves.spawn(x, p.y + 0.05, z, c.accent, 14, 0.6);
+        this.flash = Math.max(this.flash, 0.5);
+        this.shake = Math.max(this.shake, 0.55);
+        this.kick = 1;
+        break;
+      case 'flipOff':
+        P.burst(x, y, z, 80, 18, 0.9, 0.42, c.accent, { up: -8, vz: fwd * 0.9, drag: 1.4 });
+        this.waves.spawn(x, y, z, c.accent, 16, 0.6, true);
+        this.flash = Math.max(this.flash, 0.4);
+        this.shake = Math.max(this.shake, 0.35);
+        this.kick = Math.max(this.kick, 0.7);
+        break;
+      case 'thrust':
+        // the kick fires out of the top of the hull
+        P.burst(x, p.y + 1.0, z, 10, 4, 0.3, 0.2, c.accent, { up: 11, vz: fwd * 0.95, drag: 2 });
+        this.waves.spawn(x, p.y + 1.1, z, c.accent, 2.4, 0.25);
+        this.squash = Math.max(this.squash, 0.5);
+        break;
       case 'crash':
+      case 'fly':
       case 'fall':
         P.burst(x, y, z, 110, 24, 1.0, 0.5, c.trail, { drag: 2.4, grav: 7, vz: fwd * 0.45 });
         P.burst(x, y, z, 60, 34, 0.8, 0.36, c.accent, { drag: 2.8, vz: fwd * 0.45 });
@@ -218,7 +245,9 @@ export class View {
     const hv = this.hv, rv = this.rv;
     this.rainbow.setHSL((time * 0.7) % 1, 1, 0.58).multiplyScalar(1.5);
     this.rainbowDim.copy(this.rainbow).multiplyScalar(0.45);
-    this.bloom.strength = 0.5 + 0.1 * hv + 0.12 * rv;
+    this.fv += ((p.flip && p.alive ? 1 : 0) - this.fv) * k(5);
+    const fv = this.fv;
+    this.bloom.strength = 0.5 + 0.1 * hv + 0.12 * rv + 0.04 * fv;
 
     // ---- ship pose -------------------------------------------------------
     const hover = 0.55 + (p.grounded ? Math.sin(time * 3.2) * 0.06 : 0);
@@ -228,7 +257,10 @@ export class View {
     const sq = this.squash * Math.cos(this.squash * 9);
     this.pivot.visible = p.alive;
     this.pivot.position.set(sx, sy - Math.max(0, sq) * 0.25, sz);
-    this.pivot.rotation.set(THREE.MathUtils.clamp(p.vy * 0.018, -0.4, 0.4), -p.vx * 0.016, this.roll);
+    this.pivot.rotation.set(
+      THREE.MathUtils.clamp(p.vy * 0.018, -0.4, 0.4) + Math.sin(time * 7.3) * 0.1 * fv,
+      -p.vx * 0.016,
+      this.roll + Math.sin(time * 9) * 0.16 * fv);
     this.pivot.scale.set(1 + sq * 0.18, 1 - sq * 0.3, 1 + sq * 0.1);
     const power = menu ? 0.5 : p.boosting ? 2 : 1;
     ship.update(time, power);
@@ -263,8 +295,18 @@ export class View {
       this.dots -= Math.floor(this.dots);
     }
 
+    // reversed gravity: sparks stream upwards all around the ship
+    if (fv > 0.05 && p.alive) {
+      this.lift += dt * 38 * fv;
+      for (let n = Math.floor(this.lift); n > 0; n--) {
+        this.particles.spawn(sx + (Math.random() - 0.5) * 22, -3 + Math.random() * 6, sz - 6 - Math.random() * 60,
+          0, 10 + Math.random() * 12, 0, 0.9, 0.14 + Math.random() * 0.12, Math.random() < 0.5 ? this.c.accent : this.c.edge, 0);
+      }
+      this.lift -= Math.floor(this.lift);
+    }
+
     // landing marker while airborne
-    const ground = this.level!.heightAt(p.x, p.z);
+    const ground = this.level!.heightAt(p.x, p.z, p.t);
     this.marker.visible = p.alive && !p.grounded && ground !== null && p.y > ground + 0.25;
     if (this.marker.visible) {
       this.marker.position.set(sx, ground! + 0.04, sz);
@@ -277,7 +319,7 @@ export class View {
     this.shake *= Math.exp(-dt * 6);
     const aspect = cam.aspect;
     const baseFov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(0.62 / aspect)), 58, 96);
-    const fov = baseFov + this.kick * 9 + (p.boosting ? 4 : 0);
+    const fov = baseFov + this.kick * 9 + (p.boosting ? 4 : 0) + fv * 7;
     if (Math.abs(fov - cam.fov) > 0.01) { cam.fov += (fov - cam.fov) * k(8); cam.updateProjectionMatrix(); }
     if (menu) {
       const a = time * 0.25;
@@ -292,12 +334,12 @@ export class View {
         this.camY + 4.2 + (Math.random() - 0.5) * sh * 1.6,
         sz + 8.4 - this.kick * 0.8);
       cam.lookAt(this.camX * 0.92 + p.x * 0.08, this.camY + 1.1, sz - 15);
-      cam.rotateZ(-p.vx * 0.0035 + (Math.random() - 0.5) * sh * 0.08);
+      cam.rotateZ(-p.vx * 0.0035 + (Math.random() - 0.5) * sh * 0.08 + Math.sin(time * 1.9) * 0.07 * fv);
     }
 
     // ---- world -----------------------------------------------------------
-    track.update(dt, time, beat, p.z, hv, rv);
-    bg.update(dt, time, beat, cam.position, hv, rv);
+    track.update(dt, time, beat, p.z, hv, rv, p.t, fv);
+    bg.update(dt, time, beat, cam.position, hv, rv, fv);
     this.particles.update(dt);
     this.waves.update(dt);
 

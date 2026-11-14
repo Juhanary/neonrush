@@ -43,7 +43,7 @@ describe('levels', () => {
     it(`${def.name} is completable`, () => {
       const level = new Level(def);
       const res = solve(level);
-      console.log(def.name, 'rows', level.length, 'secs', (level.finishZ / def.speed).toFixed(1), 'gems', level.gemCount, res);
+      console.info(def.name, 'rows', level.length, 'secs', (level.finishZ / def.speed).toFixed(1), 'gems', level.gemCount, res);
       expect(res.ok, `stuck at row ${Math.floor(res.furthest / CFG.tileL)}`).toBe(true);
     });
   }
@@ -74,6 +74,41 @@ describe('jump pads', () => {
       expect(pads).toBeGreaterThan(0);
     });
   }
+});
+
+describe('gravity flip', () => {
+  const def = LEVELS.find((d) => d.flips && d.flips.length)!;
+  const level = new Level(def);
+  const [from, to] = def.flips![0];
+  const enter = () => {
+    const sim = new Sim(level);
+    Object.assign(sim.s, { z: from * CFG.tileL - 1, x: 0, y: 0, grounded: true });
+    return sim;
+  };
+
+  it('without tapping the ship floats up and is lost', () => {
+    const sim = enter();
+    const types: string[] = [];
+    for (let i = 0; i < 400 && sim.s.alive; i++) { sim.step({ steer: 0, jumpPressed: false, jumpHeld: false }); types.push(...sim.events.map((e) => e.type)); sim.events.length = 0; }
+    expect(types).toContain('flipOn');
+    expect(types).toContain('fly');
+    expect(sim.s.time).toBeLessThan(1.2);
+  });
+
+  it('holding the button does not help: it has to be tapped', () => {
+    const sim = enter();
+    for (let i = 0; i < 400 && sim.s.alive; i++) sim.step({ steer: 0, jumpPressed: false, jumpHeld: true });
+    expect(sim.s.alive).toBe(false);
+  });
+
+  it('gravity returns after the zone', () => {
+    const sim = enter();
+    Object.assign(sim.s, { z: to * CFG.tileL - 2, y: 4, vy: 0, grounded: false, flip: true });
+    const types: string[] = [];
+    for (let i = 0; i < 240 && sim.s.alive; i++) { sim.step({ steer: 0, jumpPressed: false, jumpHeld: false }); types.push(...sim.events.map((e) => e.type)); sim.events.length = 0; }
+    expect(types).toContain('flipOff');
+    expect(sim.s.alive && sim.s.grounded).toBe(true);
+  });
 });
 
 describe('sim', () => {

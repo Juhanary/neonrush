@@ -96,6 +96,7 @@ export class Game {
     this.view.resetRun();
     this.ui.hideCallout();
     this.ui.hideBanner();
+    this.ui.setFlip(false, 0);
     this.ui.setHype(0);
     this.ui.showMenu(this.levels.map((l) => {
       const pal = PALETTES[l.def.world % PALETTES.length];
@@ -124,6 +125,7 @@ export class Game {
     this.nextHint = 0;
     this.ui.hideCallout();
     this.ui.hideBanner();
+    this.ui.setFlip(false, 0);
     this.setHype(0);
     this.prevBest = this.save.best[this.levels[this.idx].def.id] ?? 0;
     this.input.clear();
@@ -183,6 +185,7 @@ export class Game {
     return {
       x: L(a.x, b.x), y: L(a.y, b.y), z: L(a.z, b.z) + this.coast, vx: b.vx, vy: b.vy, speed: b.speed,
       grounded: b.grounded, boosting: b.boost > 0, alive: b.alive && !b.finished,
+      t: b.time, flip: b.flip,
     };
   }
 
@@ -193,7 +196,9 @@ export class Game {
     for (const e of this.sim.events) {
       this.view.onEvent(e, this.pose(1));
       this.audio.onEvent(e);
-      if (e.type === 'crash' || e.type === 'fall') {
+      if (e.type === 'flipOn') this.ui.showBanner(this.ui.t('flipOn'));
+      else if (e.type === 'flipOff') this.ui.showBanner(this.ui.t('flipOff'));
+      if (e.type === 'crash' || e.type === 'fall' || e.type === 'fly') {
         this.mode = 'dead';
         this.timer = RESPAWN;
         this.audio.stopMusic();
@@ -240,6 +245,10 @@ export class Game {
         this.drainEvents();
       }
       if (this.mode === 'play') this.milestones();
+      const fs = this.sim.s;
+      const danger = fs.flip && fs.alive ? Math.max(0, Math.min(1, (fs.y - (CFG.flipCeil - 4.5)) / 4.5)) : 0;
+      this.ui.setFlip(fs.flip && this.mode === 'play', danger);
+      if (danger > 0.45) this.audio.warn(danger);
       const def = this.levels[this.idx].def;
       if (def.hints && !this.save.done[def.id]) {
         const row = this.sim.s.z / CFG.tileL;
@@ -269,6 +278,7 @@ export class Game {
       }
     }
 
+    if (this.mode !== 'play') this.ui.setFlip(false, 0);
     this.audio.update();
     const playing = this.mode === 'play';
     const t = this.mode === 'menu' ? this.clock : this.sim.s.time;

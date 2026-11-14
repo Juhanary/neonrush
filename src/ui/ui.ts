@@ -13,7 +13,7 @@ export interface UiHandlers {
 export class Ui {
   private hud = $('hud'); private menu = $('menu'); private pauseP = $('pause'); private doneP = $('done');
   private barFill = $('bar').querySelector('i') as HTMLElement;
-  private callout = $('callout'); private banner = $('banner'); private bar = $('bar'); private pct = $('pct'); private attempt = $('attempt'); private gems = $('gems'); private hint = $('hint');
+  private callout = $('callout'); private banner = $('banner'); private danger = $('danger'); private tap = $('tap'); private lastDanger = 0; private bar = $('bar'); private pct = $('pct'); private attempt = $('attempt'); private gems = $('gems'); private hint = $('hint');
   private stick = $('stick'); private nub = this.stick.querySelector('i') as HTMLElement;
   private lastPct = -1; private lastGems = ''; private hintTimer = 0;
   private lang: Lang = 'en'; private muted = false; private attemptN = 1;
@@ -131,6 +131,13 @@ export class Ui {
     b.classList.add(hold ? 'hold' : 'on');
   }
   hideBanner(): void { this.banner.classList.remove('on', 'hold'); }
+  /** Gravity-flip feedback: the tap prompt, and a red vignette that grows near the ceiling (0..1). */
+  setFlip(active: boolean, danger: number): void {
+    this.tap.classList.toggle('on', active);
+    const d = active ? Math.round(danger * 20) / 20 : 0;
+    if (d !== this.lastDanger) { this.lastDanger = d; this.danger.style.opacity = String(d); }
+  }
+
   /** Progress bar mood: 0 normal, 1 past halfway, 2 record run. */
   setHype(h: number): void {
     this.bar.classList.toggle('half', h === 1);
