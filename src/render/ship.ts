@@ -31,12 +31,26 @@ function glowTexture(): THREE.Texture {
   return t;
 }
 
-function tris(points: number[][], faces: number[][]): THREE.BufferGeometry {
+/**
+ * Flat-shaded triangles with the shading baked into vertex colours. No scene lights are involved,
+ * so facets stay crisp and never get bright enough to bloom.
+ */
+function tris(points: number[][], faces: number[][], base: THREE.Color): THREE.BufferGeometry {
   const v: number[] = [];
   for (const f of faces) for (const i of f) v.push(...points[i]);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
-  g.computeVertexNormals();
+  const light = new THREE.Vector3(-0.35, 0.85, 0.4).normalize();
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+  const col: number[] = [];
+  for (let i = 0; i < v.length; i += 9) {
+    a.fromArray(v, i); b.fromArray(v, i + 3); c.fromArray(v, i + 6);
+    n.copy(b).sub(a).cross(c.sub(a)).normalize();
+    if (n.y < 0 && Math.abs(n.y) > 0.5) n.negate(); // faces are drawn double sided: light the upper side
+    const shade = 0.34 + 0.5 * Math.max(0, n.dot(light)) + 0.12 * Math.max(0, n.y);
+    for (let k = 0; k < 3; k++) col.push(base.r * shade, base.g * shade, base.b * shade);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return g;
 }
 
@@ -44,12 +58,11 @@ function tris(points: number[][], faces: number[][]): THREE.BufferGeometry {
 const arrowhead: ShipFactory = (pal) => {
   const root = new THREE.Group();
   const trash: { dispose(): void }[] = [];
-  const edgeCol = new THREE.Color(pal.edge).multiplyScalar(2.0);
+  const edgeCol = new THREE.Color(pal.edge).multiplyScalar(1.25);
+  const hullCol = new THREE.Color(0xe8ecff);
+  const wingCol = new THREE.Color(pal.edge).lerp(new THREE.Color(0xffffff), 0.35);
   const lineMat = new THREE.LineBasicMaterial({ color: edgeCol });
-  const hullMat = new THREE.MeshStandardMaterial({
-    color: 0x8f9be0, metalness: 0.25, roughness: 0.4, flatShading: true, side: THREE.DoubleSide,
-    emissive: new THREE.Color(pal.edge).multiplyScalar(0.16),
-  });
+  const hullMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
   trash.push(lineMat, hullMat);
   const outlined = (geo: THREE.BufferGeometry, mat: THREE.Material = hullMat) => {
     const m = new THREE.Mesh(geo, mat);
@@ -62,14 +75,14 @@ const arrowhead: ShipFactory = (pal) => {
 
   // hull: nose, left, right, top, bottom, tail   (forward is -Z)
   const P = [[0, 0.04, -1.3], [-0.52, 0.0, 0.5], [0.52, 0.0, 0.5], [0, 0.4, 0.2], [0, -0.16, 0.25], [0, 0.12, 0.85]];
-  outlined(tris(P, [[0, 1, 3], [0, 3, 2], [1, 5, 3], [3, 5, 2], [0, 4, 1], [0, 2, 4], [1, 4, 5], [4, 2, 5]]));
+  outlined(tris(P, [[0, 1, 3], [0, 3, 2], [1, 5, 3], [3, 5, 2], [0, 4, 1], [0, 2, 4], [1, 4, 5], [4, 2, 5]], hullCol));
 
   // wings
   for (const s of [-1, 1]) {
     const W = [[s * 0.42, 0.02, -0.15], [s * 1.0, -0.04, 0.72], [s * 0.42, 0.02, 0.62], [s * 0.5, 0.1, 0.4]];
-    outlined(tris(W, [[0, 1, 3], [3, 1, 2], [0, 2, 1], [0, 3, 2]]));
+    outlined(tris(W, [[0, 1, 3], [3, 1, 2], [0, 2, 1], [0, 3, 2]], wingCol));
     const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.5),
-      new THREE.MeshBasicMaterial({ color: new THREE.Color(pal.accent).multiplyScalar(1.8) }));
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(pal.accent).multiplyScalar(1.15) }));
     fin.position.set(s * 1.0, 0.06, 0.62);
     trash.push(fin.geometry, fin.material as THREE.Material);
     root.add(fin);
@@ -77,7 +90,7 @@ const arrowhead: ShipFactory = (pal) => {
 
   // cockpit
   const cockpitGeo = new THREE.OctahedronGeometry(0.2);
-  const cockpitMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(pal.accent).multiplyScalar(1.5) });
+  const cockpitMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x10163a) });
   const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
   cockpit.position.set(0, 0.27, -0.2);
   cockpit.scale.set(0.8, 0.5, 1.9);
@@ -90,29 +103,31 @@ const arrowhead: ShipFactory = (pal) => {
   const nozzleGeo = new THREE.CylinderGeometry(0.17, 0.13, 0.4, 8);
   const coreGeo = new THREE.CircleGeometry(0.13, 12);
   const coreMat = new THREE.MeshBasicMaterial({ color: hot.clone().lerp(new THREE.Color(1, 1, 1), 0.5).multiplyScalar(2), side: THREE.DoubleSide });
-  const glowMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().multiplyScalar(0.8), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const glowMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().multiplyScalar(0.7), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
   trash.push(tex, nozzleGeo, coreGeo, coreMat, glowMat);
+  const nozzleMat = new THREE.MeshBasicMaterial({ color: 0x2a3166 });
+  trash.push(nozzleMat);
   const thrusters: THREE.Vector3[] = [];
   const glows: THREE.Sprite[] = [];
   for (const s of [-1, 1]) {
-    const n = outlined(nozzleGeo.clone());
+    const n = outlined(nozzleGeo.clone(), nozzleMat);
     n.rotation.x = Math.PI / 2;
     n.position.set(s * 0.3, 0.08, 0.72);
     const core = new THREE.Mesh(coreGeo, coreMat);
     core.position.set(s * 0.3, 0.08, 0.93);
     root.add(core);
     const glow = new THREE.Sprite(glowMat);
-    glow.position.set(s * 0.3, 0.08, 1.0);
+    glow.position.set(s * 0.3, 0.08, 1.12);
     root.add(glow);
     glows.push(glow);
-    thrusters.push(new THREE.Vector3(s * 0.3, 0.08, 0.95));
+    thrusters.push(new THREE.Vector3(s * 0.3, 0.08, 1.05));
   }
 
   // hover glow under the hull
-  const underMat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(pal.edge).multiplyScalar(0.3), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const underMat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(pal.edge).multiplyScalar(0.22), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
   trash.push(underMat);
   const under = new THREE.Sprite(underMat);
-  under.position.set(0, -0.3, 0.1);
+  under.position.set(0, -0.42, 0.1);
   under.scale.set(1.8, 0.7, 1);
   root.add(under);
 
@@ -122,7 +137,7 @@ const arrowhead: ShipFactory = (pal) => {
     root, thrusters,
     update(time, power) {
       const f = 0.85 + 0.15 * Math.sin(time * 47) + 0.1 * Math.sin(time * 31.7);
-      const s = (0.4 + 0.3 * power) * f;
+      const s = (0.26 + 0.2 * power) * f;
       for (const g of glows) g.scale.set(s * 1.1, s * 1.1, 1);
       under.scale.set(1.7 + 0.2 * Math.sin(time * 6), 0.65, 1);
     },

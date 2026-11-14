@@ -5,6 +5,7 @@ import { LEVELS } from '../core/levels';
 import { Sim, type ShipState } from '../core/sim';
 import { PALETTES } from '../render/palette';
 import { View, type Pose } from '../render/view';
+import { detectLang } from '../ui/i18n';
 import { Ui } from '../ui/ui';
 import { Input } from './input';
 import { loadSave, storeSave } from './storage';
@@ -51,8 +52,15 @@ export class Game {
         storeSave(this.save);
         return this.save.muted;
       },
+      lang: () => {
+        this.save.lang = (this.save.lang ?? detectLang()) === 'fi' ? 'en' : 'fi';
+        storeSave(this.save);
+        this.ui.setLang(this.save.lang);
+        if (this.mode === 'menu') this.toMenu();
+      },
     });
     this.ui.setMuted(this.save.muted);
+    this.ui.setLang(this.save.lang ?? detectLang());
     this.input.attach(surface);
     this.input.onStick = (a, x, y, dx) => this.ui.setStick(a, x, y, dx);
     surface.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse') this.touch = true; });
@@ -191,7 +199,7 @@ export class Game {
       if (def.hints && !this.save.done[def.id]) {
         const row = this.sim.s.z / CFG.tileL;
         while (this.nextHint < def.hints.length && row >= def.hints[this.nextHint].row) {
-          if (this.mode === 'play') this.ui.showCallout(def.hints[this.nextHint].text);
+          if (this.mode === 'play') this.ui.showCallout(this.ui.t('hint.' + def.hints[this.nextHint].key));
           this.nextHint++;
         }
       }

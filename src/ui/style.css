@@ -74,3 +74,4 @@ h2 { margin: 0 0 6px; font-size: clamp(24px, 6vw, 48px); font-weight: 900; font-
   color: #fff; text-shadow: 0 0 10px var(--b), 0 0 30px var(--b), 2px 2px 0 var(--a); }
 #callout.on { animation: callout 1.5s ease-out both; }
 @keyframes callout { 0% { opacity: 0; transform: scale(1.7); } 12% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: scale(.96); } }
+.row { flex-wrap: wrap; justify-content: center; }

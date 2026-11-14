@@ -29,31 +29,32 @@
 
 <section id="menu" class="panel">
   <h1 class="logo"><span>NEON</span><span>RUSH</span></h1>
-  <p class="tag">HOVER &middot; JUMP &middot; SURVIVE</p>
+  <p class="tag" data-i18n="tag">HOVER &middot; JUMP &middot; SURVIVE</p>
   <div id="levels"></div>
   <div class="row">
     <button id="muteBtn" class="ghost">SOUND ON</button>
-    <button id="fsBtn" class="ghost">FULLSCREEN</button>
+    <button id="fsBtn" class="ghost" data-i18n="fullscreen">FULLSCREEN</button>
+    <button id="langBtn" class="ghost" data-i18n="switchLang">SUOMEKSI</button>
   </div>
-  <p id="rotate" class="note">Best played in landscape</p>
+  <p id="rotate" class="note" data-i18n="landscape">Best played in landscape</p>
 </section>
 
 <section id="pause" class="panel" hidden>
-  <h2>PAUSED</h2>
+  <h2 data-i18n="paused">PAUSED</h2>
   <div class="col">
-    <button id="resumeBtn" class="big">RESUME</button>
-    <button id="restartBtn" class="ghost">RESTART</button>
-    <button id="quitBtn" class="ghost">LEVELS</button>
+    <button id="resumeBtn" class="big" data-i18n="resume">RESUME</button>
+    <button id="restartBtn" class="ghost" data-i18n="restart">RESTART</button>
+    <button id="quitBtn" class="ghost" data-i18n="levels">LEVELS</button>
   </div>
 </section>
 
 <section id="done" class="panel" hidden>
-  <h2>LEVEL COMPLETE</h2>
+  <h2 data-i18n="complete">LEVEL COMPLETE</h2>
   <p id="doneStats" class="stats"></p>
   <div class="col">
-    <button id="nextBtn" class="big">NEXT LEVEL</button>
-    <button id="againBtn" class="ghost">PLAY AGAIN</button>
-    <button id="doneMenuBtn" class="ghost">LEVELS</button>
+    <button id="nextBtn" class="big" data-i18n="next">NEXT LEVEL</button>
+    <button id="againBtn" class="ghost" data-i18n="again">PLAY AGAIN</button>
+    <button id="doneMenuBtn" class="ghost" data-i18n="levels">LEVELS</button>
   </div>
 </section>
 

@@ -1,5 +1,6 @@
 import { Game } from './game/game';
 import { View } from './render/view';
+import { detectLang, translate } from './ui/i18n';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 try {
@@ -9,5 +10,5 @@ try {
 } catch (err) {
   const el = document.getElementById('fatal')!;
   el.hidden = false;
-  el.textContent = 'Neonrush needs WebGL 2, which this browser or device did not provide. (' + String(err) + ')';
+  el.textContent = translate(detectLang(), 'noWebgl') + ' (' + String(err) + ')';
 }

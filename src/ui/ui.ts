@@ -1,11 +1,12 @@
 import './style.css';
+import { translate, type Key, type Lang } from './i18n';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 export interface LevelCard { name: string; world: number; best: number; gems: number; gemTotal: number; done: boolean; css: string; css2: string }
 
 export interface UiHandlers {
-  play(i: number): void; pause(): void; resume(): void; restart(): void; menu(): void; next(): void; mute(): boolean;
+  play(i: number): void; pause(): void; resume(): void; restart(): void; menu(): void; next(): void; mute(): boolean; lang(): void;
 }
 
 /** DOM overlay: HUD, menus and the touch stick indicator. Knows nothing about the simulation. */
@@ -15,6 +16,7 @@ export class Ui {
   private callout = $('callout'); private pct = $('pct'); private attempt = $('attempt'); private gems = $('gems'); private hint = $('hint');
   private stick = $('stick'); private nub = this.stick.querySelector('i') as HTMLElement;
   private lastPct = -1; private lastGems = ''; private hintTimer = 0;
+  private lang: Lang = 'en'; private muted = false; private attemptN = 1;
 
   constructor(private h: UiHandlers) {
     $('pauseBtn').addEventListener('click', () => h.pause());
@@ -25,7 +27,8 @@ export class Ui {
     $('doneMenuBtn').addEventListener('click', () => h.menu());
     $('nextBtn').addEventListener('click', () => h.next());
     const mute = $('muteBtn');
-    mute.addEventListener('click', () => { mute.textContent = h.mute() ? 'SOUND OFF' : 'SOUND ON'; });
+    mute.addEventListener('click', () => this.setMuted(h.mute()));
+    $('langBtn').addEventListener('click', () => h.lang());
     const fs = $('fsBtn');
     const root = document.documentElement;
     if (!root.requestFullscreen) fs.hidden = true;
@@ -40,7 +43,19 @@ export class Ui {
     });
   }
 
-  setMuted(m: boolean): void { $('muteBtn').textContent = m ? 'SOUND OFF' : 'SOUND ON'; }
+  t(key: Key | string): string { return translate(this.lang, key); }
+
+  /** Switch language and refresh every static label. */
+  setLang(lang: Lang): void {
+    this.lang = lang;
+    document.documentElement.lang = lang;
+    document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => { el.textContent = this.t(el.dataset.i18n!); });
+    this.setMuted(this.muted);
+    this.setAttempt(this.attemptN);
+    this.hint.classList.remove('on');
+  }
+
+  setMuted(m: boolean): void { this.muted = m; $('muteBtn').textContent = this.t(m ? 'soundOff' : 'soundOn'); }
 
   setTheme(css: string, css2: string): void {
     document.documentElement.style.setProperty('--a', css);
@@ -55,7 +70,7 @@ export class Ui {
       b.className = 'card';
       b.style.setProperty('--c1', c.css);
       b.style.setProperty('--c2', c.css2);
-      b.innerHTML = `<span class="go">${c.done ? '&#9733;' : '&#9654;'}</span><small>WORLD ${c.world + 1}</small><strong>${c.name}</strong>
+      b.innerHTML = `<span class="go">${c.done ? '&#9733;' : '&#9654;'}</span><small>${this.t('world')} ${c.world + 1}</small><strong>${c.name}</strong>
         <div class="meter"><i style="width:${c.best}%"></i></div>
         <div class="meta"><span>${c.best}%</span><span>&#9670; ${c.gems}/${c.gemTotal}</span></div>`;
       b.addEventListener('click', () => this.h.play(i));
@@ -70,7 +85,7 @@ export class Ui {
   }
   showPause(): void { this.pauseP.hidden = false; }
   showDone(stats: { attempts: number; gems: number; gemTotal: number; hasNext: boolean }): void {
-    $('doneStats').innerHTML = `ATTEMPTS <b>${stats.attempts}</b><br>GEMS <b>&#9670; ${stats.gems}/${stats.gemTotal}</b>`;
+    $('doneStats').innerHTML = `${this.t('attempts')} <b>${stats.attempts}</b><br>${this.t('gems')} <b>&#9670; ${stats.gems}/${stats.gemTotal}</b>`;
     $('nextBtn').hidden = !stats.hasNext;
     this.doneP.hidden = false; this.hud.hidden = true;
   }
@@ -85,12 +100,12 @@ export class Ui {
     const g = `◆ ${gems}/${gemTotal}`;
     if (g !== this.lastGems) { this.lastGems = g; this.gems.textContent = g; }
   }
-  setAttempt(n: number): void { this.attempt.textContent = 'ATTEMPT ' + n; }
+  setAttempt(n: number): void { this.attemptN = n; this.attempt.textContent = this.t('attempt') + ' ' + n; }
 
   showHint(touch: boolean): void {
     this.hint.innerHTML = touch
-      ? '<b>&#9664; VED\u00C4 = OHJAUS &#9654;</b><b>NAPAUTA = HYPPY</b>'
-      : '<b>A / D = OHJAUS</b><b>V\u00C4LILY\u00D6NTI = HYPPY</b>';
+      ? `<b>&#9664; ${this.t('touchSteer')} &#9654;</b><b>${this.t('touchJump')}</b>`
+      : `<b>${this.t('keySteer')}</b><b>${this.t('keyJump')}</b>`;
     this.hint.classList.add('on');
     clearTimeout(this.hintTimer);
     this.hintTimer = window.setTimeout(() => this.hint.classList.remove('on'), 4500);

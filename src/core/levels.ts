@@ -2,16 +2,16 @@ import type { LevelDef } from './level';
 
 const r = (n: number, row: string): string[] => Array<string>(n).fill(row);
 
-/** A hint marker inside a row list: shown `lead` rows before the row that follows it. */
+/** A hint marker inside a row list: shown `lead` rows before the row that follows it. `hint` is a text key (ui/i18n.ts). */
 interface Hint { hint: string; lead: number }
 const h = (hint: string, lead = 0): Hint => ({ hint, lead });
 
 function build(items: (string | Hint)[]): Pick<LevelDef, 'rows' | 'hints'> {
   const rows: string[] = [];
-  const hints: { row: number; text: string }[] = [];
+  const hints: { row: number; key: string }[] = [];
   for (const it of items) {
     if (typeof it === 'string') rows.push(it);
-    else hints.push({ row: rows.length - it.lead, text: it.hint });
+    else hints.push({ row: rows.length - it.lead, key: it.hint });
   }
   hints.sort((a, b) => a.row - b.row);
   return { rows, hints };
@@ -25,39 +25,39 @@ const cyanDrift: LevelDef = {
   speed: 24,
   ...build([
     ...r(8, '====='),
-    h('KERÄÄ TIMANTIT', 2),
+    h('collect', 2),
     '==o==', '=====', '==o==', '=====', '==o==', '=====',
-    '=====', h('HYPPÄÄ!', 1.9), '.....', '.....', '=====', '=====', '=====',
-    h('OHJAA SIVULLE', 1),
+    '=====', h('jump', 1.9), '.....', '.....', '=====', '=====', '=====',
+    h('steer', 1),
     '=o===', '=====', '=o===', '=====', '=o===', '=====',
-    h('VÄISTÄ TAI HYPPÄÄ YLI', 2.5),
+    h('dodge', 2.5),
     '=====', '==#==', '=====', '=====', '=====',
     '===o=', '=====', '===o=', '=====', '===o=', '=====',
     '#===#', '=====', '=====', '=#=#=', '=====', '=====',
-    '=====', h('HYPPÄÄ!', 1.9), '..*..', '..*..', '=====', '=====', '=====',
-    h('KAPEA TIE', 2),
+    '=====', h('jump', 1.9), '..*..', '..*..', '=====', '=====', '=====',
+    h('narrow', 2),
     ...r(2, '.===.'), '.=o=.', '.===.', '.=o=.', '.===.', '.=o=.', '.===.',
     ...r(3, '====='),
-    h('ETSI AUKKO', 3),
+    h('opening', 3),
     '##=##', '=====', '=====', '=====',
-    h('HYPPÄÄ TIMANTTIIN', 1),
+    h('gemjump', 1),
     '=O===', '=====', '=====', '===O=', '=====', '=====',
-    h('KELTAINEN ALUSTA HEITTÄÄ ILMAAN', 4.5),
+    h('pad', 4.5),
     '^^^^^', '..+..', '..+..', '..+..', '=====', '=====', '=====', '=====',
-    h('PYSY TIELLÄ', 1),
+    h('stay', 1),
     ...r(4, '===..'), '=o=..', '=====', ...r(3, '..==='), '..=o=', '=====',
     ...r(3, '====='),
-    h('HYPPÄÄ PÄÄLLE', 2.2),
+    h('ontop', 2.2),
     '=====', '#####', '#####', '#####', '=====', '=====',
     '=o=o=', '=====', '=====',
-    h('VAUHTIA!', 2.5),
-    '>>>>>', '=====', h('PITKÄ HYPPY!', 1.6), '..*..', '..*..', '.....', '.....', '=====', '=====',
+    h('boost', 2.5),
+    '>>>>>', '=====', h('long', 1.6), '..*..', '..*..', '.....', '.....', '=====', '=====',
     ...r(3, '====='),
-    h('PUJOTTELE', 2),
+    h('weave', 2),
     '=#===', '=====', '===#=', '=====', '=#===', '=====', '=====',
-    '=====', h('HYPPÄÄ!', 1.9), '.....', '.....', '=====', '==o==', '=====', h('JA UUDESTAAN!', 1.9), '.....', '.....', '=====',
+    '=====', h('jump', 1.9), '.....', '.....', '=====', '==o==', '=====', h('again', 1.9), '.....', '.....', '=====',
     '==o==', '=====', '==o==',
-    h('MAALI!', 1),
+    h('finish', 1),
     ...r(5, '====='),
   ]),
 };

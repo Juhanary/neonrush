@@ -5,6 +5,7 @@ export interface Save {
   done: Record<string, boolean>;
   attempts: Record<string, number>;
   muted: boolean;
+  lang?: 'en' | 'fi';
 }
 
 const KEY = 'neonrush.save.v1';

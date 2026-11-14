@@ -15,7 +15,7 @@ export interface LevelDef {
   speed: number;
   rows: string[];
   /** Tutorial callouts: shown when the ship reaches `row` (may be fractional). */
-  hints?: { row: number; text: string }[];
+  hints?: { row: number; key: string }[];
 }
 
 export class Level {

@@ -19,7 +19,7 @@ export interface Pose {
   grounded: boolean; boosting: boolean; alive: boolean;
 }
 
-const QUALITY = [2, 1.5, 1.25, 1, 0.8];
+const QUALITY = [2.5, 2, 1.5, 1.25, 1];
 
 export class View {
   readonly renderer: THREE.WebGLRenderer;
@@ -57,17 +57,12 @@ export class View {
   constructor(canvas: HTMLCanvasElement, private flashEl: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', alpha: false });
     this.renderer.toneMapping = THREE.NoToneMapping;
-    const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 2 });
+    const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.45, 0.85);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
-
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x4040a0, 1.1));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-    sun.position.set(-3, 6, 4);
-    this.scene.add(sun);
 
     this.scene.add(this.pivot, this.particles.points, this.waves.group);
     for (let i = 0; i < 2; i++) {
@@ -198,7 +193,7 @@ export class View {
       if (p.alive) {
         for (let n = Math.floor(this.exhaust); n > 0; n--) {
           this.particles.spawn(w.x, w.y, w.z,
-            (Math.random() - 0.5) * 2.5, (Math.random() - 0.5) * 2.5, 2 + Math.random() * 6,
+            (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, 5 + Math.random() * 7,
             0.16 + Math.random() * 0.2, p.boosting ? 0.26 : 0.15, p.boosting ? this.c.hot : this.c.exhaust, 1);
         }
       }
