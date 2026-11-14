@@ -1,5 +1,5 @@
 import { CFG } from './config';
-import { Level, gemHeight } from './level';
+import { Level, gemHeight, gemReach, isGem } from './level';
 
 export interface InputState {
   /** -1 (left) .. 1 (right) */
@@ -155,11 +155,11 @@ export class Sim {
       }
     }
 
-    if (this.trackGems && (t === 'o' || t === 'O' || t === '*')) {
+    if (this.trackGems && isGem(t)) {
       const id = row * CFG.lanes + lane;
       if (!this.collected.has(id)) {
         const gy = gemHeight(t);
-        if (Math.abs(s.y + 0.5 - gy) < 1.15) {
+        if (Math.abs(s.y + 0.5 - gy) < gemReach(t)) {
           this.collected.add(id);
           this.events.push({ type: 'gem', x: L.laneCenter(lane), y: gy, z: (row + 0.5) * CFG.tileL, id });
         }

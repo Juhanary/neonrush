@@ -19,7 +19,7 @@ export const CFG = {
 
   gravity: 62,
   jumpVel: 17.5,
-  padJumpVel: 25,
+  padJumpVel: 30,
   coyote: 0.09,
   jumpBuffer: 0.12,
 

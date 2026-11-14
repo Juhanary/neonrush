@@ -12,7 +12,7 @@ export interface UiHandlers {
 export class Ui {
   private hud = $('hud'); private menu = $('menu'); private pauseP = $('pause'); private doneP = $('done');
   private barFill = $('bar').querySelector('i') as HTMLElement;
-  private pct = $('pct'); private attempt = $('attempt'); private gems = $('gems'); private hint = $('hint');
+  private callout = $('callout'); private pct = $('pct'); private attempt = $('attempt'); private gems = $('gems'); private hint = $('hint');
   private stick = $('stick'); private nub = this.stick.querySelector('i') as HTMLElement;
   private lastPct = -1; private lastGems = ''; private hintTimer = 0;
 
@@ -89,12 +89,22 @@ export class Ui {
 
   showHint(touch: boolean): void {
     this.hint.innerHTML = touch
-      ? '<b>&#9664; DRAG TO STEER &#9654;</b><b>TAP TO JUMP</b>'
-      : '<b>A / D &nbsp;STEER</b><b>SPACE &nbsp;JUMP</b>';
+      ? '<b>&#9664; VED\u00C4 = OHJAUS &#9654;</b><b>NAPAUTA = HYPPY</b>'
+      : '<b>A / D = OHJAUS</b><b>V\u00C4LILY\u00D6NTI = HYPPY</b>';
     this.hint.classList.add('on');
     clearTimeout(this.hintTimer);
     this.hintTimer = window.setTimeout(() => this.hint.classList.remove('on'), 4500);
   }
+
+  /** Big mid-screen tutorial text. */
+  showCallout(text: string): void {
+    const c = this.callout;
+    c.textContent = text;
+    c.classList.remove('on');
+    void c.offsetWidth; // restart the animation
+    c.classList.add('on');
+  }
+  hideCallout(): void { this.callout.classList.remove('on'); }
 
   setStick(active: boolean, x: number, y: number, dx: number): void {
     this.stick.classList.toggle('on', active);

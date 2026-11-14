@@ -49,6 +49,33 @@ describe('levels', () => {
   }
 });
 
+describe('jump pads', () => {
+  for (const def of LEVELS) {
+    it(`${def.name}: every pad lands safely with no input, even when entered late`, () => {
+      const level = new Level(def);
+      let pads = 0;
+      def.rows.forEach((row, ri) => {
+        [...row].forEach((c, lane) => {
+          if (c !== '^') return;
+          pads++;
+          for (const enter of [0, 0.5, 0.9]) {
+            const sim = new Sim(level);
+            Object.assign(sim.s, { x: level.laneCenter(lane), z: (ri + enter) * CFG.tileL - 0.2, y: 0, grounded: true });
+            let flew = false;
+            for (let i = 0; i < 400 && sim.s.alive; i++) {
+              sim.step({ steer: 0, jumpPressed: false, jumpHeld: false });
+              if (!sim.s.grounded) flew = true;
+              else if (flew) break;
+            }
+            expect(sim.s.alive && sim.s.grounded && flew, `row ${ri} lane ${lane} enter ${enter}`).toBe(true);
+          }
+        });
+      });
+      expect(pads).toBeGreaterThan(0);
+    });
+  }
+});
+
 describe('sim', () => {
   const level = new Level(LEVELS[0]);
   const idle = { steer: 0, jumpPressed: false, jumpHeld: false };

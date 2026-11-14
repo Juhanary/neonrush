@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CFG, ROAD_W } from '../core/config';
-import { Level, gemHeight } from '../core/level';
+import { Level, gemHeight, isGem } from '../core/level';
 import type { Palette } from './palette';
 
 const VERT = /* glsl */ `
@@ -144,7 +144,7 @@ export class Track {
     for (let row = 0; row < level.length + CFG.runway; row++) {
       for (let lane = 0; lane < CFG.lanes; lane++) {
         const t = level.tile(row, lane);
-        if (t === '.' || t === '*') continue;
+        if (t === '.' || t === '*' || t === '+') continue;
         const x = level.laneCenter(lane), z = (row + 0.5) * CFG.tileL;
         if (t === '#') add(x, CFG.blockH / 2 - 0.25, z, tw, CFG.blockH + 0.5, tl, 1);
         else add(x, -0.25, z, tw, 0.5, tl, row >= level.length ? 4 : t === '^' ? 2 : t === '>' ? 3 : 0);
@@ -178,7 +178,7 @@ export class Track {
     for (let row = 0; row < level.length; row++) {
       for (let lane = 0; lane < CFG.lanes; lane++) {
         const t = level.tile(row, lane);
-        if (t !== 'o' && t !== 'O' && t !== '*') continue;
+        if (!isGem(t)) continue;
         const g = new THREE.Mesh(gemGeo, gemMat);
         g.add(new THREE.LineSegments(gemEdges, gemEdge));
         g.position.set(level.laneCenter(lane), gemHeight(t) + 0.15, -(row + 0.5) * CFG.tileL);

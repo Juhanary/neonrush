@@ -31,6 +31,7 @@ export class Game {
   private input = new Input();
   private ui: Ui;
   private touch = false;
+  private nextHint = 0;
 
   constructor(private view: View, surface: HTMLElement) {
     this.sim = new Sim(this.levels[0]);
@@ -82,6 +83,7 @@ export class Game {
     this.sim.reset();
     this.prev = { ...this.sim.s };
     this.view.resetRun();
+    this.ui.hideCallout();
     this.ui.showMenu(this.levels.map((l) => {
       const pal = PALETTES[l.def.world % PALETTES.length];
       return {
@@ -106,6 +108,8 @@ export class Game {
     this.acc = 0;
     this.doneShown = false;
     this.coast = 0;
+    this.nextHint = 0;
+    this.ui.hideCallout();
     this.input.clear();
     this.view.resetRun();
     this.attempts++;
@@ -182,6 +186,14 @@ export class Game {
         this.sim.step(this.input.sample());
         this.acc -= CFG.dt;
         this.drainEvents();
+      }
+      const def = this.levels[this.idx].def;
+      if (def.hints && !this.save.done[def.id]) {
+        const row = this.sim.s.z / CFG.tileL;
+        while (this.nextHint < def.hints.length && row >= def.hints[this.nextHint].row) {
+          if (this.mode === 'play') this.ui.showCallout(def.hints[this.nextHint].text);
+          this.nextHint++;
+        }
       }
       this.ui.setHud(this.sim.s.z / this.levels[this.idx].finishZ, this.sim.collected.size, this.levels[this.idx].gemCount);
     } else if (this.mode === 'dead') {

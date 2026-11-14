@@ -5,6 +5,7 @@ import { CFG, ROAD_W } from './config';
  *   .  gap            =  floor          #  block (obstacle, can be landed on)
  *   ^  jump pad       >  boost pad      o  floor + gem
  *   O  floor + high gem (needs a jump)  *  gap + gem in the air
+ *   +  gap + gem high on a jump-pad arc
  * Plain text so the same data loads unchanged in another engine.
  */
 export interface LevelDef {
@@ -13,6 +14,8 @@ export interface LevelDef {
   world: number;
   speed: number;
   rows: string[];
+  /** Tutorial callouts: shown when the ship reaches `row` (may be fractional). */
+  hints?: { row: number; text: string }[];
 }
 
 export class Level {
@@ -29,7 +32,7 @@ export class Level {
     this.length = def.rows.length;
     this.finishZ = this.length * CFG.tileL;
     let g = 0;
-    for (const r of def.rows) for (const c of r) if (c === 'o' || c === 'O' || c === '*') g++;
+    for (const r of def.rows) for (const c of r) if (isGem(c)) g++;
     this.gemCount = g;
   }
 
@@ -52,11 +55,18 @@ export class Level {
   /** Walkable surface height at a point, or null over a gap. */
   heightAt(x: number, z: number): number | null {
     const t = this.tile(this.rowOf(z), this.laneOf(x));
-    if (t === '.' || t === '*') return null;
+    if (t === '.' || t === '*' || t === '+') return null;
     return t === '#' ? CFG.blockH : 0;
   }
 }
 
+export function isGem(t: string): boolean {
+  return t === 'o' || t === 'O' || t === '*' || t === '+';
+}
 export function gemHeight(t: string): number {
-  return t === 'o' ? 0.9 : 2.3;
+  return t === 'o' ? 0.9 : t === '+' ? 6 : 2.3;
+}
+/** Vertical pickup tolerance: pad-arc gems are forgiving because the arc varies with speed. */
+export function gemReach(t: string): number {
+  return t === '+' ? 2.2 : 1.15;
 }

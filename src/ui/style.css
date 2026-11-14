@@ -69,3 +69,8 @@ h2 { margin: 0 0 6px; font-size: clamp(24px, 6vw, 48px); font-weight: 900; font-
 @media (max-height: 380px) { .tag { display: none; } .panel { gap: 7px; } .card { padding: 9px 9px 8px; } }
 #fatal { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; background: #0a0a3c; font-family: system-ui, sans-serif; line-height: 1.5; }
 @media (max-width: 560px) { #attempt { display: none; } #bar { flex-basis: 50%; } }
+#callout { position: fixed; left: 0; right: 0; top: calc(46px + env(safe-area-inset-top)); text-align: center; pointer-events: none; opacity: 0;
+  padding: 0 16px; font-weight: 900; font-style: italic; font-size: clamp(16px, 4vw, 32px); letter-spacing: .06em; line-height: 1.1;
+  color: #fff; text-shadow: 0 0 10px var(--b), 0 0 30px var(--b), 2px 2px 0 var(--a); }
+#callout.on { animation: callout 1.5s ease-out both; }
+@keyframes callout { 0% { opacity: 0; transform: scale(1.7); } 12% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: scale(.96); } }
