@@ -48,8 +48,11 @@ vec3 beatLine() {
   float r = floor(rowf);
   if (mod(r, 3.0) > 0.5) return vec3(0.0);
   float bar = 1.0 - step(0.5, mod(r, 12.0));
-  float line = smoothstep(0.11, 0.03, abs(fract(rowf) - 0.5)) * smoothstep(0.5, 0.42, abs(vLocal.x));
-  return mix(uEdge, uAccent, bar) * line * (0.16 + 0.2 * bar) * (0.7 + 0.9 * uBeat) * smoothstep(120.0, 60.0, vAhead);
+  float w = 0.05 + 0.04 * bar;
+  float line = smoothstep(w + 0.035, w, abs(fract(rowf) - 0.5)) * smoothstep(0.47, 0.4, abs(vLocal.x));
+  // beats are a row of dashes, bar lines are solid
+  line *= mix(step(0.5, fract(vLocal.x * 3.0 + 0.25)), 1.0, bar);
+  return uAccent * line * (0.5 + 0.5 * bar) * (0.55 + 0.9 * uBeat) * smoothstep(130.0, 70.0, vAhead);
 }
 
 float chevrons(float speed) {

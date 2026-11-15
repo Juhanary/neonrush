@@ -9,7 +9,7 @@
     "preview": "vite preview --host",
     "test": "vitest run",
     "build:single": "SINGLE=1 vite build --outDir dist-single",
-    "level:report": "REPORT=1 vitest run tests/report.test.ts",
+    "level:report": "node scripts/report.mjs",
     "audio:check": "node scripts/audio.mjs http://localhost:4173/"
   },
   "dependencies": {

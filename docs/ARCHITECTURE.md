@@ -30,13 +30,17 @@ Input.sample() -> Sim.step() x N (fixed dt) -> Sim.events -> View.onEvent / Game
 | `O` | floor with a high gem (needs a jump) |
 | `*` | gap with a gem in the air |
 | `+` | gap with a gem high on a jump-pad arc |
-| `m` | moving road: slides sideways as `moveAmp * sin(time * moveW - row * moveK)` (sim and shader share the constants) |
+| `m` | moving road: slides sideways as `moveAmp * sin(beat * moveBeat - row * moveK)`, where `beat` is the ship's beat position (sim and shader share the constants) |
 | `i` | ice: steering grip drops to `iceGrip` |
 | `\|` | rail: a narrow beam in the middle of the lane |
 
 Gravity-flip zones are row ranges (`LevelDef.flips`). Inside one the ship brakes to `flipSpeed` of the track speed, gravity pulls up, each tap kicks the ship down, and rising past `flipCeil` loses the ship. Tutorial callouts are `LevelDef.hints` (text keys, translated in `src/ui/i18n.ts`).
 
-Tiles are 2.4 m wide and 4 m long, five lanes. At the base speed of 24 m/s one beat (120 BPM) is three rows.
+Tiles are 2.4 m wide and 4 m long, five lanes. One beat is three rows.
+
+## Rhythm
+
+One beat is three rows at any speed, so tempo = speed × 5 BPM (`core/config.ts`: `rowsPerBeat`, `BEAT_LEN`, `BAR_ROWS`; `Level.beatAt`, `Level.bpm`, `Level.energyOf`, `Level.flipGravity`). The ship's beat position drives the music (`audio/clock.ts`), the visual pulse, the beat lines drawn on the road, and the moving roads. Flip-zone gravity is derived from the tempo so that one tap per beat holds altitude. Method: `docs/LEVELS.md`, `docs/MUSIC.md`, `docs/TESTING.md`.
 
 ## Track design
 
@@ -44,7 +48,7 @@ A jump lasts 0.56 s and can carry the ship about 2.5 lanes sideways. Every track
 
 ## Practice mode
 
-`Level.checkpoints` is derived from the rows alone: two rows of floor in one lane, no block right after, at least `checkpointGap` rows apart, never between a boost pad and its long jump. `Sim.spawnAt()` starts a run there with the clock set to the nominal arrival time, so moving roads are in a repeatable phase. `Game` restarts from the last checkpoint after a short freeze, stores the checkpoint row per track, and records no best, stars or completion in practice.
+`Level.checkpoints` is derived from the rows alone: two rows of floor in one lane, no block right after, at least `checkpointGap` rows apart, never between a boost pad and its long jump. `Sim.spawnAt()` starts a run there; the song resumes at that beat. `Game` restarts from the last checkpoint after a short freeze, stores the checkpoint row per track, and records no best, stars or completion in practice.
 
 ## Rendering notes
 

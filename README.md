@@ -10,6 +10,8 @@ npm run dev          # local dev server (open the printed network URL on a phone
 npm test             # simulation tests, including a bot that proves every level can be finished
 npm run build        # production build in dist/
 npm run build:single # one self-contained HTML file in dist-single/
+npm run level:report # every track bar by bar on the beat grid (add -- <track-id> for one)
+npm run audio:check  # offline render of every song: clipping and balance (needs the preview server)
 ```
 
 ## Controls
@@ -31,4 +33,4 @@ npm run build:single # one self-contained HTML file in dist-single/
 | `tests` | Vitest: determinism, jump distance, level completability at two reaction speeds, jump pads, flip zones, practice checkpoints. |
 | `scripts` | Headless Chrome smoke tests and screenshots. |
 
-See `docs/ARCHITECTURE.md` for the design rules and the notes on a later Godot port.
+See `docs/ARCHITECTURE.md` for the design rules and the notes on a later Godot port, `docs/LEVELS.md` for building tracks on the beat grid, `docs/MUSIC.md` for writing songs that match them, and `docs/TESTING.md` for the test routine.

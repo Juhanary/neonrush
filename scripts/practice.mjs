@@ -5,7 +5,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new',
   args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const p = await b.newPage();
-await p.emulate({ viewport: { width: 844, height: 390, deviceScaleFactor: 2, isMobile: true, hasTouch: true, isLandscape: true }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' });
+await p.emulate({ viewport: { width: 844, height: 390, deviceScaleFactor: 1, isMobile: true, hasTouch: true, isLandscape: true }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' });
 const errs = [];
 p.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) errs.push(m.text()); });
 p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
@@ -26,7 +26,7 @@ await sleep(500);
 res.started = brief(await st());
 // no input: the ship passes two checkpoints and falls into the first gap, then restarts from the last checkpoint
 let s;
-for (let i = 0; i < 80; i++) { await sleep(50); s = await st(); if (s.mode === 'dead') break; }
+for (let i = 0; i < 300; i++) { await sleep(50); s = await st(); if (s.mode === 'dead') break; }
 res.died = brief(s);
 for (let i = 0; i < 80; i++) { await sleep(50); s = await st(); if (s.mode === 'play' && s.attempts >= 2) break; }
 res.respawned = brief(s);
@@ -36,14 +36,14 @@ res.back = brief(await st());
 await p.tap('#cpStartBtn'); await sleep(150);
 res.fromStart = brief(await st());
 // let it run to the gap again, then reload: practice mode and the checkpoint must survive
-for (let i = 0; i < 80; i++) { await sleep(50); s = await st(); if (s.mode === 'dead') break; }
+for (let i = 0; i < 300; i++) { await sleep(50); s = await st(); if (s.mode === 'dead') break; }
 await p.reload({ waitUntil: 'load' }); await sleep(2500);
 await p.evaluate(() => document.querySelectorAll('.card')[0].click());
 await sleep(300);
 res.afterReload = brief(await st());
 // finish in practice: nothing is recorded
-await p.evaluate(() => { const g = window.__game; g.hold = 0; Object.assign(g.sim.s, { z: g.sim.level.finishZ - 30, x: 0, y: 0, vy: 0, grounded: true }); });
-for (let i = 0; i < 80; i++) { await sleep(100); if (await p.evaluate(() => !document.getElementById('done').hidden)) break; }
+await p.evaluate(() => { const g = window.__game; g.hold = 0; const cp = g.sim.level.checkpoints.at(-1); Object.assign(g.sim.s, { z: cp.z, x: cp.x, y: 0, vy: 0, grounded: true }); }); // last checkpoint: a straight run to the finish
+for (let i = 0; i < 200; i++) { await sleep(100); if (await p.evaluate(() => !document.getElementById('done').hidden)) break; }
 await p.screenshot({ path: `${out}/practice-done.png` });
 res.finished = brief(await st());
 res.doneTitle = await p.evaluate(() => document.getElementById('doneTitle').textContent);

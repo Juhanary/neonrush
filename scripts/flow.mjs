@@ -30,17 +30,17 @@ await sleep(180);
 res.jumped = await st();
 // wait for death in the first gap, capture the explosion, then the auto-restart
 let died = false;
-for (let i = 0; i < 60 && !died; i++) { await sleep(50); died = (await st()).mode === 'dead'; }
+for (let i = 0; i < 300 && !died; i++) { await sleep(50); died = (await st()).mode === 'dead'; }
 await sleep(120);
 await p.screenshot({ path: `${out}/death.png` });
 res.died = await st();
 for (let i = 0; i < 60; i++) { await sleep(100); const q = await st(); if (q.mode === 'play' && q.attempts >= 2) break; }
 res.respawned = await st();
 // jump to just before the finish line
-await p.evaluate(() => { const g = window.__game; g.sim.s.z = g.sim.level.finishZ - 30; g.sim.s.x = 0; g.sim.s.y = 0; g.sim.s.vy = 0; g.sim.s.grounded = true; });
+await p.evaluate(() => { const g = window.__game; g.hold = 0; const cp = g.sim.level.checkpoints.at(-1); Object.assign(g.sim.s, { z: cp.z, x: cp.x, y: 0, vy: 0, grounded: true }); }); // last checkpoint: a straight run to the finish
 await sleep(700);
 await p.screenshot({ path: `${out}/portal.png` });
-for (let i = 0; i < 80; i++) { await sleep(100); if (await p.evaluate(() => !document.getElementById('done').hidden)) break; }
+for (let i = 0; i < 200; i++) { await sleep(100); if (await p.evaluate(() => !document.getElementById('done').hidden)) break; }
 res.finished = await st();
 res.fps = await p.evaluate(() => new Promise((r) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 > 1000) r(n); else requestAnimationFrame(f); }; f(); }));
 res.donePanel = await p.evaluate(() => !document.getElementById('done').hidden && document.getElementById('doneStats').textContent);
