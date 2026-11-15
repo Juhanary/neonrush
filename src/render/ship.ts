@@ -9,8 +9,8 @@ export interface ShipVisual {
   root: THREE.Group;
   /** Thruster exits in ship-local space (trails and exhaust start here). */
   thrusters: THREE.Vector3[];
-  /** power: 0 idle .. 1 cruising .. 2 boosting */
-  update(time: number, power: number): void;
+  /** power: 0 idle .. 1 cruising .. 2 boosting; beat: 1 on the beat, decaying to 0 */
+  update(time: number, power: number, beat?: number): void;
   /** Colours of everything the ship emits: trail ribbons, exhaust, jump and landing sparks. */
   trail: THREE.Color;
   exhaust: THREE.Color;
@@ -288,6 +288,9 @@ function nova(paint: Paint): ShipVisual {
   under.position.set(0, -0.45, 0.2);
   root.add(under);
 
+  const fx = engineFx(thrusters.map((t) => t.clone()), hot, tex, trash);
+  root.add(fx.group);
+
   const SCALE = 1.15;
   root.scale.setScalar(SCALE);
   for (const t of thrusters) t.multiplyScalar(SCALE);
@@ -295,13 +298,138 @@ function nova(paint: Paint): ShipVisual {
     root, thrusters,
     trail: hot.clone().lerp(new THREE.Color(1, 1, 1), 0.3).multiplyScalar(1.3),
     exhaust: hot.clone().multiplyScalar(0.7),
-    update(time, power) {
+    update(time, power, beat = 0) {
       const f = 0.85 + 0.15 * Math.sin(time * 47) + 0.1 * Math.sin(time * 31.7);
-      const sz = (0.3 + 0.2 * power) * f;
+      const sz = (0.3 + 0.2 * power + 0.12 * beat) * f;
       for (const g of glows) g.scale.set(sz, sz, 1);
       under.scale.set(2.1 + 0.2 * Math.sin(time * 6), 0.65, 1);
+      fx.update(time, power, beat);
     },
     dispose() { for (const t of trash) t.dispose(); },
+  };
+}
+
+/**
+ * Engine effects for any craft, at the given exhaust points (ship-local, flames point to +Z):
+ * an outer flame and a white-hot core that flicker and stretch with power, three shock diamonds along
+ * the jet, a ring that blasts out of each nozzle on every beat, and a horizontal lens streak.
+ * Everything is additive and marked `glow`, so it blooms and is not redrawn by the crisp pass.
+ */
+/** A soft six-ray star, drawn once: the flare that reads best from straight behind the engine. */
+function flareTexture(): THREE.Texture {
+  const N = 128, c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d')!;
+  g.translate(N / 2, N / 2);
+  g.globalCompositeOperation = 'lighter';
+  for (let k = 0; k < 6; k++) {
+    g.save();
+    g.rotate((k / 6) * Math.PI * 2);
+    const len = k % 2 ? N * 0.32 : N * 0.48, grad = g.createLinearGradient(0, 0, len, 0);
+    grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.beginPath(); g.moveTo(0, -2.2); g.lineTo(len, 0); g.lineTo(0, 2.2); g.closePath(); g.fill();
+    g.restore();
+  }
+  const core = g.createRadialGradient(0, 0, 0, 0, 0, N * 0.16);
+  core.addColorStop(0, 'rgba(255,255,255,1)');
+  core.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = core;
+  g.fillRect(-N / 2, -N / 2, N, N);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function engineFx(points: THREE.Vector3[], hot: THREE.Color, tex: THREE.Texture, trash: { dispose(): void }[]) {
+  const group = new THREE.Group();
+  const add = (o: THREE.Object3D) => { o.userData.glow = true; return o; };
+  const flameGeo = (r: number, len: number, a: THREE.Color, b: THREE.Color) => {
+    const g = new THREE.ConeGeometry(r, len, 14, 4, true);
+    g.rotateX(Math.PI / 2);
+    g.translate(0, 0, len / 2);
+    const pos = g.getAttribute('position'), cols = new Float32Array(pos.count * 3), c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const t = Math.min(1, Math.max(0, pos.getZ(i) / len)); // 0 at the nozzle, 1 at the tip (clamped: a negative base would give NaN, and bloom spreads NaN over the whole frame)
+      c.copy(a).lerp(b, Math.min(1, t * 1.6)).multiplyScalar(Math.pow(1 - t, 1.6));
+      cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    trash.push(g);
+    return g;
+  };
+  const addMat = (o: Partial<THREE.MeshBasicMaterialParameters> = {}) => {
+    const m = new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.DoubleSide, ...o });
+    trash.push(m);
+    return m;
+  };
+  const white = new THREE.Color(1, 1, 1);
+  const outerGeo = flameGeo(0.24, 1.0, hot.clone().multiplyScalar(2.2), hot.clone().multiplyScalar(0.6));
+  const coreGeo = flameGeo(0.1, 0.6, white.clone().multiplyScalar(2.2), hot.clone().lerp(white, 0.5).multiplyScalar(1.4));
+  const flameMat = addMat();
+  const diaMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().lerp(white, 0.6).multiplyScalar(1.8), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const streakMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().lerp(white, 0.3).multiplyScalar(1.1), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const ringGeo = new THREE.RingGeometry(0.85, 1.0, 32);
+  const flareTex = flareTexture();
+  const flareMat = new THREE.SpriteMaterial({ map: flareTex, color: hot.clone().lerp(white, 0.35).multiplyScalar(1.7), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const haloMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().multiplyScalar(0.55), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  trash.push(diaMat, streakMat, ringGeo, flareTex, flareMat, haloMat);
+  const engines = points.map((p) => {
+    const outer = add(new THREE.Mesh(outerGeo, flameMat)) as THREE.Mesh;
+    const core = add(new THREE.Mesh(coreGeo, flameMat)) as THREE.Mesh;
+    outer.position.copy(p); core.position.copy(p);
+    const dias = [0.22, 0.42, 0.62].map(() => add(new THREE.Sprite(diaMat)) as THREE.Sprite);
+    const streak = add(new THREE.Sprite(streakMat)) as THREE.Sprite;
+    streak.position.copy(p).setZ(p.z + 0.12);
+    const ringMat = new THREE.MeshBasicMaterial({ color: hot.clone().multiplyScalar(1.8), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    trash.push(ringMat);
+    const ring = add(new THREE.Mesh(ringGeo, ringMat)) as THREE.Mesh;
+    ring.position.copy(p);
+    // rotating star flare just behind the nozzle, and a wide soft halo around it
+    const fm = flareMat.clone(); // own material: each engine's flare spins its own way
+    trash.push(fm);
+    const flare = add(new THREE.Sprite(fm)) as THREE.Sprite;
+    flare.position.copy(p).setZ(p.z + 0.08);
+    const halo = add(new THREE.Sprite(haloMat)) as THREE.Sprite;
+    halo.position.copy(p).setZ(p.z + 0.05);
+    group.add(outer, core, streak, ring, flare, halo, ...dias);
+    return { p, outer, core, dias, streak, ring, ringMat, flare, halo };
+  });
+  let lastBeat = 0, ringT = 1;
+  return {
+    group,
+    update(time: number, power: number, beat: number) {
+      // a new beat starts when the decaying beat value jumps up
+      if (beat > lastBeat + 0.25) ringT = 0;
+      lastBeat = beat;
+      ringT = Math.min(1, ringT + 1 / 20);
+      engines.forEach((e, i) => {
+        const flick = 0.82 + 0.18 * Math.sin(time * 61 + i * 2.1) + 0.12 * Math.sin(time * 37.3 + i);
+        // long enough that, seen from the chase camera above and behind, the jet shows below the nozzle
+        const len = (1.0 + 0.7 * power + 0.5 * beat) * flick;
+        const wid = 1.0 + 0.2 * power + 0.25 * beat;
+        e.outer.scale.set(wid, wid, len);
+        e.core.scale.set(wid * (0.9 + 0.1 * flick), wid, len * 1.05);
+        e.dias.forEach((d, k) => {
+          const z = e.p.z + [0.22, 0.42, 0.62][k] * len;
+          const s = (0.16 - k * 0.035) * (0.8 + 0.4 * Math.sin(time * 53 + k * 1.7 + i)) * (0.7 + 0.3 * power);
+          d.position.set(e.p.x, e.p.y, z);
+          d.scale.set(s, s, 1);
+        });
+        e.streak.scale.set((0.9 + 0.5 * power + 0.5 * beat) * flick, 0.07 + 0.03 * beat, 1);
+        const rs = 0.18 + ringT * 0.75;
+        e.ring.scale.set(rs, rs, 1);
+        e.ring.position.z = e.p.z + ringT * 0.5;
+        e.ringMat.opacity = (1 - ringT) * (1 - ringT);
+        e.ring.visible = ringT < 1;
+        const fs = (1.25 + 0.4 * power + 0.6 * beat) * (0.9 + 0.1 * flick);
+        e.flare.scale.set(fs, fs, 1);
+        (e.flare.material as THREE.SpriteMaterial).rotation = time * (i ? -1.6 : 1.6);
+        const hs = (1.5 + 0.35 * power + 0.5 * beat) * flick;
+        e.halo.scale.set(hs, hs, 1);
+      });
+    },
   };
 }
 

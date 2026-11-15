@@ -24,6 +24,8 @@ for (const spec of rows.split(' ')) {
     g.prev = { ...g.sim.s };
   }, row, x, y);
   await sleep(260);
+  // the close-up first: a moment later the ship may already have hit what is ahead
+  if (process.env.CROP) await p.screenshot({ path: `${out}/tourcrop-${level}-${row}.png`, clip: { x: 322, y: 245, width: 200, height: 110 } });
   await p.screenshot({ path: `${out}/tour-${level}-${row}.png` });
 }
 console.log('ok', errs);

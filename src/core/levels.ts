@@ -276,9 +276,9 @@ const zeroPoint: LevelDef = {
   ]),
 };
 
-/** World 9 — EXTREME. Built after the concept art: spike rows, crate slaloms, a crate skyway, side jumps at 34 m/s. */
+/** World 9 — built after the concept art: spike rows, crate slaloms, a crate skyway, side jumps at 34 m/s. */
 const neonHorizon: LevelDef = {
-  id: 'neon-horizon', name: 'NEON HORIZON', world: 8, speed: 34, song: 'horizon', extreme: true,
+  id: 'neon-horizon', name: 'NEON HORIZON', world: 8, speed: 34, song: 'horizon',
   energy: '2233 2233 2333 3333',
   ...build([
     h('spikes', 3),

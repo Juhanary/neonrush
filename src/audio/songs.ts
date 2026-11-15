@@ -187,7 +187,7 @@ export const SONGS: Record<string, Song> = {
     },
     form: 'AABA', stab: '..x..x....x..x..',
   },
-  /** World 9 (extreme), 170 BPM: G minor darksynth. Galloping bass, a three-note riff that climbs with the chords. */
+  /** World 9, 170 BPM: G minor darksynth. Galloping bass, a three-note riff that climbs with the chords. */
   horizon: {
     key: 67, scale: MINOR, chords: '1674', kit: DRIVE,
     bass: { kind: 'pluck', oct: -2, pat: ['1...1...1...1...', '1.1.1.1.1.1.1.1.', '1.181.181.181.18'] },

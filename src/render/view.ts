@@ -102,7 +102,7 @@ export class View {
     this.ship = SHIPS[this.shipId]();
     this.pivot.add(this.ship.root);
     // hull, panels and outlines are redrawn after bloom; the additive engine glow is not (it should bloom)
-    this.ship.root.traverse((o) => { if (!(o instanceof THREE.Sprite)) o.layers.enable(CRISP); });
+    this.ship.root.traverse((o) => { if (!(o instanceof THREE.Sprite) && !o.userData.glow) o.layers.enable(CRISP); });
     this.c.trail.copy(this.ship.trail);
     this.c.exhaust.copy(this.ship.exhaust);
     this.scene.add(this.pivot, this.particles.points, this.waves.group);
@@ -301,11 +301,11 @@ export class View {
       this.roll + Math.sin(time * 5) * 0.05 * fv);
     this.pivot.scale.set(1 + sq * 0.18, 1 - sq * 0.3, 1 + sq * 0.1);
     const power = menu ? 0.5 : p.boosting ? 2 : 1;
-    ship.update(time, power);
+    ship.update(time, power, menu ? 0 : beat);
 
     // ---- trails and exhaust ----------------------------------------------
     this.pivot.updateMatrixWorld();
-    this.exhaust += dt * (p.boosting ? 110 : 55);
+    this.exhaust += dt * (p.boosting ? 130 : 70) * (1 + 0.6 * beat);
     for (let i = 0; i < ship.thrusters.length && i < this.ribbons.length; i++) {
       const w = this.tmp.copy(ship.thrusters[i]).applyMatrix4(this.pivot.matrixWorld);
       const rb = this.ribbons[i];
@@ -318,6 +318,10 @@ export class View {
           this.particles.spawn(w.x, w.y, w.z,
             (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, 5 + Math.random() * 7,
             0.16 + Math.random() * 0.2, p.boosting ? 0.26 : 0.15, p.boosting ? this.c.hot : rv > 0.5 ? this.rainbowDim : this.c.exhaust, 1);
+          // every few puffs a hot spark that flies out sideways and falls
+          if (Math.random() < 0.18) this.particles.spawn(w.x, w.y, w.z,
+            (Math.random() - 0.5) * 6, 1 + Math.random() * 3, 8 + Math.random() * 6,
+            0.2 + Math.random() * 0.15, 0.07, this.c.trail, 1, 14);
         }
       }
     }
