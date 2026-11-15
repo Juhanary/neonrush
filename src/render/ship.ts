@@ -237,10 +237,32 @@ function nova(paint: Paint): ShipVisual {
   const thrusters: THREE.Vector3[] = [];
   const tex = glowTexture();
   const hot = new THREE.Color(paint.engine);
-  const ringGeo = new THREE.RingGeometry(0.12, 0.2, 18);
-  const ringMat = new THREE.MeshBasicMaterial({ color: hot.clone().multiplyScalar(2.4), side: THREE.DoubleSide });
-  const coreGeo = new THREE.CircleGeometry(0.13, 18);
-  const coreMat = new THREE.MeshBasicMaterial({ color: hot.clone().lerp(new THREE.Color(1, 1, 1), 0.75).multiplyScalar(2.6), side: THREE.DoubleSide });
+  // nozzle rim: lit from above, fading towards the bottom, so the exhaust reads as a round opening, not a flat ring
+  const ringGeo = new THREE.RingGeometry(0.12, 0.2, 32, 1);
+  {
+    const pos = ringGeo.getAttribute('position'), cols = new Float32Array(pos.count * 3), c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      // 0 at the bottom .. 1 at the top, clamped: rounding can give a hair below 0, pow() of that is NaN,
+      // and bloom spreads a single NaN pixel over the whole frame
+      const up = Math.min(1, Math.max(0, (pos.getY(i) / 0.2 + 1) / 2));
+      c.copy(hot).multiplyScalar(0.18 + 2.3 * Math.pow(up, 1.6));
+      cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+    }
+    ringGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  }
+  const ringMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  // the hot core: white in the middle, deepening to magenta at its edge
+  const coreGeo = new THREE.CircleGeometry(0.13, 32);
+  {
+    const pos = coreGeo.getAttribute('position'), cols = new Float32Array(pos.count * 3), c = new THREE.Color(), w = new THREE.Color(1, 1, 1);
+    for (let i = 0; i < pos.count; i++) {
+      const r = Math.min(1, Math.hypot(pos.getX(i), pos.getY(i)) / 0.13);
+      c.copy(w).lerp(hot, Math.min(1, r * 1.1)).multiplyScalar(2.6 - 1.6 * r);
+      cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+    }
+    coreGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  }
+  const coreMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
   trash.push(tex, ringGeo, ringMat, coreGeo, coreMat);
 
   for (const s of [-1, 1]) {

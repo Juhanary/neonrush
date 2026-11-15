@@ -38,7 +38,7 @@ export class Particles {
       blendEquation: THREE.AddEquation, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
       blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
       defines: dark ? { DARK: 1 } : {},
-      uniforms: { uScale: { value: 600 } },
+      uniforms: { uScale: { value: 600 }, uRim: { value: new THREE.Color(0, 0, 0) } },
       vertexShader: /* glsl */ `
         attribute vec3 aColor; attribute float aSize; attribute float aAlpha; uniform float uScale; varying vec3 vC; varying float vA;
         void main() {
@@ -54,12 +54,16 @@ export class Particles {
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */ `
-        varying vec3 vC; varying float vA;
+        varying vec3 vC; varying float vA; uniform vec3 uRim;
         void main() {
           float r = length(gl_PointCoord - 0.5);
           float a = smoothstep(0.5, 0.05, r);
         #ifdef DARK
-          gl_FragColor = vec4(vC, a * vA);
+          // a dark core with a dim coloured edge: the core shows on a bright road, the edge on a dark one
+          float core = smoothstep(0.42, 0.0, r);
+          float glow = smoothstep(0.5, 0.15, r);
+          vec3 col = mix(uRim, vC, smoothstep(0.1, 0.55, core));
+          gl_FragColor = vec4(col, max(core * 0.85, glow * 0.4) * vA);
         #else
           gl_FragColor = vec4(vC * a * a, 1.0);
         #endif
@@ -67,6 +71,11 @@ export class Particles {
     });
     this.points = new THREE.Points(geo, this.mat);
     this.points.frustumCulled = false;
+  }
+
+  /** Dark pool only: colour of the soft edge around each puff. */
+  setRim(c: THREE.Color): void {
+    this.mat.uniforms.uRim.value.copy(c);
   }
 
   setScale(px: number): void {
@@ -114,7 +123,7 @@ export class Particles {
       if (this.dark) {
         // smoke keeps its colour, thins out and spreads
         this.col[j] = this.base[j]; this.col[j + 1] = this.base[j + 1]; this.col[j + 2] = this.base[j + 2];
-        this.alpha[i] = k * (2 - k) * 0.6;
+        this.alpha[i] = k * (2 - k) * 0.85;
         this.size[i] = this.bsize[i] * (0.5 + 1.1 * (1 - k));
       } else {
         this.col[j] = this.base[j] * k; this.col[j + 1] = this.base[j + 1] * k; this.col[j + 2] = this.base[j + 2] * k;

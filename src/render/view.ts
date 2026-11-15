@@ -115,6 +115,7 @@ export class View {
     this.c.exhaust.copy(this.ship.exhaust);
     // soot is drawn after bloom, with the crisp ship: glow added on top would wash dark puffs out to a pale haze
     this.smoke.points.layers.set(CRISP);
+    this.smoke.setRim(this.ship.exhaust.clone().multiplyScalar(0.4));
     this.scene.add(this.pivot, this.smoke.points, this.particles.points, this.waves.group);
     for (let i = 0; i < 2; i++) {
       const r = new Ribbon(new THREE.Color());
@@ -340,7 +341,7 @@ export class View {
 
     // dark violet soot behind the engines, so the jets read against the bright road. Short-lived, and it fades
     // out before it reaches the camera.
-    this.smokeAcc += dt * (p.boosting ? 100 : 65) * (1 + 0.4 * beat);
+    this.smokeAcc += dt * (p.boosting ? 120 : 80) * (1 + 0.4 * beat);
     if (p.alive && !menu) {
       for (let n = Math.floor(this.smokeAcc); n > 0; n--) {
         const t = ship.thrusters[n % ship.thrusters.length];
@@ -351,7 +352,7 @@ export class View {
         // falls behind at about half the ship's speed: 1 to 5 m back, where the chase camera sees it below the ship
         this.smoke.spawn(w.x + side * 0.1, w.y - 0.1, w.z + 0.9,
           side * (0.3 + Math.random() * 0.9), -0.9 + Math.random() * 0.8, -p.speed * 0.55 + Math.random() * 3,
-          0.35 + Math.random() * 0.25, 0.32 + Math.random() * 0.3, this.sootC, 1.2);
+          0.4 + Math.random() * 0.3, 0.45 + Math.random() * 0.35, this.sootC, 1.2);
         // and a deep violet ember: darker than the sparks, but it glows, so it also shows on a dark road
         if (Math.random() < 0.3) this.particles.spawn(w.x, w.y, w.z + 0.2,
           side * (0.5 + Math.random() * 2), Math.random() * 1.5, -p.speed * 0.5 + Math.random() * 3,
