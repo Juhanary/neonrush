@@ -10,7 +10,17 @@ export interface SongOptions {
   from?: number;
   /** Start with the flip-zone filter on. */
   muffled?: boolean;
+  /** Play the player's own music file instead of the built-in song (level editor tracks). */
+  track?: MusicTrack;
 }
+
+/** A decoded music file on a beat grid: beat 0 of the track sounds `start` seconds into it. */
+export interface MusicTrack { buf: AudioBuffer; bpm: number; start: number }
+
+/** A mastered song is much louder than the synth mix; this puts it at about the same level. */
+const TRACK_GAIN = 0.5;
+/** Delay of the mix bus itself: the compressor and the limiter each look 6 ms ahead. */
+const BUS_DELAY = 0.012;
 
 /**
  * Music and sound effects.
@@ -20,6 +30,11 @@ export interface SongOptions {
  * to the track, not to time: a boost pushes the tempo up, a gravity-flip zone halves it, a practice
  * restart resumes the song at that checkpoint, and the same bar of music always plays over the same
  * bar of road.
+ *
+ * A custom track can bring its own music file (`SongOptions.track`). The file is tied to the ship in the
+ * same way: its playback speed follows the ship's speed, and a small correction keeps the file position
+ * on the ship's beat position, so a boost bends the song up, a flip zone drops it to half speed and a
+ * practice restart starts it at that checkpoint.
  */
 export class GameAudio {
   private ctx?: AudioContext;
@@ -38,6 +53,16 @@ export class GameAudio {
   muted = false;
   /** Debug: when set, every scheduled sixteenth is recorded here as [step, context time]. */
   log?: [number, number][];
+  /** The player's own music for the current track, and the source that is playing it. */
+  private track?: MusicTrack;
+  private src?: AudioBufferSourceNode;
+  private srcGain?: GainNode;
+  /** File position `srcPos` at context time `srcT`, moving at `srcRate`. */
+  private srcPos = 0; private srcT = 0; private srcRate = 1;
+  /** Debug: how far the file is from where the ship says it should be, in seconds (positive = ahead). */
+  trackError = 0;
+  private previewTimer = 0;
+  private clickBus?: GainNode;
 
   /** Must be called from a user gesture. */
   unlock(): void {
@@ -56,6 +81,12 @@ export class GameAudio {
   }
 
   get ready(): boolean { return !!this.ctx; }
+
+  /** Decode a music file. Needs `unlock()` first; rejects when the browser cannot read the format. */
+  decode(data: ArrayBuffer): Promise<AudioBuffer> {
+    if (!this.ctx) return Promise.reject(new Error('no audio'));
+    return this.ctx.decodeAudioData(data);
+  }
   /** Name of the song that is playing, or '' when the music is stopped. */
   get current(): string { return this.playing ? this.songName : ''; }
   /** Tempo of a free-running song (the menu theme). */
@@ -79,6 +110,9 @@ export class GameAudio {
     this.energy = opt.energy ?? ((bar) => (own ? +own[((bar % loop) + loop) % loop] : 2));
     this.clock.reset(opt.from ?? 0);
     this.gemCombo = 0;
+    this.stopPreview();
+    this.stopSrc();
+    this.track = opt.track;
     if (!this.ctx) return;
     this.playing = true;
     const t = this.ctx.currentTime;
@@ -92,10 +126,107 @@ export class GameAudio {
   stopMusic(): void {
     if (!this.ctx) return;
     this.playing = false;
+    this.stopSrc(0.08);
     const t = this.ctx.currentTime;
     this.mix.music.gain.cancelScheduledValues(t);
     this.mix.music.gain.setTargetAtTime(0, t, 0.03);
   }
+
+  private stopSrc(fade = 0.02): void {
+    const src = this.src, g = this.srcGain, ctx = this.ctx;
+    this.src = undefined; this.srcGain = undefined;
+    if (!src || !g || !ctx) return;
+    const t = ctx.currentTime;
+    g.gain.cancelScheduledValues(t);
+    g.gain.setTargetAtTime(0, t, fade / 3);
+    try { src.stop(t + fade + 0.02); } catch { /* already stopped */ }
+  }
+
+  /**
+   * Keep the music file on the ship: `beat` is where the ship is, `bps` how fast it moves. The file plays at
+   * the ship's speed relative to the track speed, trimmed by up to 1.2 % to pull the file position onto
+   * the ship's, and is restarted at the right spot when it is more than 90 ms off (a stutter, a restart).
+   */
+  private syncTrack(ctx: AudioContext, tr: MusicTrack, beat: number, bps: number): void {
+    const now = ctx.currentTime;
+    const rate = bps / (tr.bpm / 60);
+    // what leaves the context now is heard a little later
+    const lat = BUS_DELAY + Math.min(0.2, Math.max(0, ctx.outputLatency || ctx.baseLatency || 0));
+    const want = tr.start + (beat * 60) / tr.bpm + lat * rate;
+    if (rate < 0.05 || want >= tr.buf.duration - 0.05) { this.stopSrc(); return; }
+    if (this.src) {
+      const pos = this.srcPos + (now - this.srcT) * this.srcRate;
+      const err = pos - want;
+      this.trackError = err;
+      if (Math.abs(err) <= 0.09) {
+        const r = rate * (1 - Math.max(-0.012, Math.min(0.012, err * 0.25)));
+        this.srcPos = pos; this.srcT = now; this.srcRate = r;
+        this.src.playbackRate.setValueAtTime(r, now);
+        return;
+      }
+      this.stopSrc();
+    }
+    if (want < 0) return; // the track starts before the file does: silence until the file begins
+    const lead = 0.03;
+    const src = ctx.createBufferSource();
+    src.buffer = tr.buf;
+    src.playbackRate.value = rate;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(TRACK_GAIN, now + lead + 0.02);
+    src.connect(g).connect(this.mix.music);
+    src.start(now + lead, want + lead * rate);
+    this.src = src; this.srcGain = g;
+    this.srcPos = want + lead * rate; this.srcT = now + lead; this.srcRate = rate;
+    this.trackError = 0;
+  }
+
+  /**
+   * Editor: play a music file from `start` with a click on every beat (higher on the bar line), so the
+   * beat grid can be checked by ear. Stops by itself after `seconds`.
+   */
+  preview(tr: MusicTrack, seconds = 12): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.stopMusic();
+    this.stopPreview();
+    void ctx.resume().catch(() => {});
+    const t = ctx.currentTime + 0.08;
+    this.mix.muffle(false, 0.01);
+    this.mix.music.gain.cancelScheduledValues(t);
+    this.mix.music.gain.setValueAtTime(0.8, ctx.currentTime);
+    const src = ctx.createBufferSource();
+    src.buffer = tr.buf;
+    const g = ctx.createGain();
+    g.gain.value = TRACK_GAIN;
+    src.connect(g).connect(this.mix.music);
+    const from = Math.max(0, tr.start);
+    // a start before the file begins is silence until the file does
+    src.start(t + Math.max(0, -tr.start), from, seconds);
+    this.src = src; this.srcGain = g;
+    // the clicks get their own bus, so stopping the preview silences the ones already scheduled
+    const bus = ctx.createGain();
+    bus.connect(this.mix.sfx);
+    this.clickBus = bus;
+    const beat = 60 / tr.bpm;
+    for (let k = 0; k * beat < seconds; k++) {
+      const f = k % 4 === 0 ? 2100 : 1400;
+      this.v.tone('square', f, f, t + k * beat, 0.03, k % 4 === 0 ? 0.3 : 0.2, 6000, bus);
+    }
+    this.previewTimer = window.setTimeout(() => this.stopPreview(), seconds * 1000 + 200);
+  }
+
+  stopPreview(): void {
+    if (!this.previewTimer) return;
+    clearTimeout(this.previewTimer);
+    this.previewTimer = 0;
+    this.clickBus?.disconnect();
+    this.clickBus = undefined;
+    this.stopSrc(0.05);
+    if (this.ctx && !this.playing) this.mix.music.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
+  }
+  /** True while an editor preview is sounding. */
+  get previewing(): boolean { return this.previewTimer !== 0; }
 
   /**
    * Call every frame while a song plays: `beat` is the current position in beats and `bps` how fast it
@@ -106,6 +237,11 @@ export class GameAudio {
     if (!ctx || !this.playing || ctx.state !== 'running') return;
     const was = this.clock.bps;
     const due = this.clock.advance(ctx.currentTime, beat, bps);
+    if (this.track) {
+      // the file is the music; the clock still runs so that sound effects land on its grid
+      this.syncTrack(ctx, this.track, beat, bps);
+      return;
+    }
     if (this.clock.bps !== was && this.clock.bps > 0) this.mix.setStep(1 / (this.clock.bps * 4));
     if (!due.length) return;
     const sd = 1 / (this.clock.bps * 4);
@@ -239,11 +375,8 @@ export class GameAudio {
     }
   }
 
-  /**
-   * Debug / test only: render `bars` bars of a song offline and return its level statistics.
-   * Used by scripts/audio.mjs to catch clipping, silence and a lopsided mix without anyone listening.
-   */
-  static async render(name: string, bars: number, energy: number, bpm: number): Promise<{ peak: number; rms: number; low: number; mid: number; high: number; clipped: number }> {
+  /** Debug / test only: render `bars` bars of a built-in song offline. Its first beat is 0.05 s in. */
+  static async renderSong(name: string, bars: number, energy: number | ((bar: number) => number), bpm: number): Promise<AudioBuffer> {
     const sr = 44100, sd = 60 / bpm / 4;
     const ctx = new OfflineAudioContext(2, Math.ceil(sr * (bars * 16 * sd + 1)), sr);
     const mix = new Mix(ctx);
@@ -251,8 +384,18 @@ export class GameAudio {
     mix.music.gain.value = 0.8;
     mix.setStep(sd);
     const song = SONGS[name];
-    for (let step = 0; step < bars * 16; step++) playStep(v, song, { step, t: 0.05 + step * sd, sd, energy, next: energy, hype: 0 });
-    const buf = await ctx.startRendering();
+    const e = typeof energy === 'number' ? () => energy : energy;
+    for (let step = 0; step < bars * 16; step++) playStep(v, song, { step, t: 0.05 + step * sd, sd, energy: e(Math.floor(step / 16)), next: e(Math.floor(step / 16) + 1), hype: 0 });
+    return ctx.startRendering();
+  }
+
+  /**
+   * Debug / test only: render `bars` bars of a song offline and return its level statistics.
+   * Used by scripts/audio.mjs to catch clipping, silence and a lopsided mix without anyone listening.
+   */
+  static async render(name: string, bars: number, energy: number, bpm: number): Promise<{ peak: number; rms: number; low: number; mid: number; high: number; clipped: number }> {
+    const buf = await GameAudio.renderSong(name, bars, energy, bpm);
+    const sr = buf.sampleRate;
     const L = buf.getChannelData(0), R = buf.getChannelData(1);
     let peak = 0, sum = 0, clipped = 0, lo = 0, hi = 0, sumLow = 0, sumHigh = 0, sumMid = 0;
     const aLow = 1 - Math.exp((-2 * Math.PI * 200) / sr), aHigh = 1 - Math.exp((-2 * Math.PI * 3000) / sr);

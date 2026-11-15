@@ -5,12 +5,17 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 
 const GUIDE: [string, string][] = [
   ['\u266A', 'beat'], ['\u25C6', 'gem'], ['\u2197', 'jump'], ['\u25A0', 'block'], ['\u25B3', 'spike'], ['\u25B2', 'pad'], ['\u00BB', 'boost'], ['\u25C7', 'ice'],
-  ['\u21C4', 'move'], ['\u2551', 'rail'], ['\u21C5', 'flip'], ['\u2605', 'hype'], ['\u25C8', 'prac'],
+  ['\u21C4', 'move'], ['\u2551', 'rail'], ['\u21C5', 'flip'], ['\u2605', 'hype'], ['\u25C8', 'prac'], ['\u270E', 'edit'],
 ];
 
 export interface LevelCard { name: string; world: number; best: number; gems: number; gemTotal: number; done: boolean; stars: number; css: string; css2: string; extreme?: boolean }
 
+/** A track the player built (level editor). */
+export interface CustomCard { id: string; name: string; world: number; bpm: number; music: boolean; best: number; gems: number; gemTotal: number; done: boolean; stars: number; css: string; css2: string }
+
 export interface UiHandlers {
+  /** Play a track the player built; open the editor on one (or on a new one). */
+  playCustom(id: string): void; edit(id?: string): void;
   play(i: number): void; pause(): void; resume(): void; restart(): void; menu(): void; next(): void; mute(): boolean; lang(): void;
   /** Toggle practice mode; returns the new state. */
   mode(): boolean; cpBack(): void; cpStart(): void;
@@ -38,6 +43,7 @@ export class Ui {
     mute.addEventListener('click', () => this.setMuted(h.mute()));
     $('langBtn').addEventListener('click', () => h.lang());
     $('modeBtn').addEventListener('click', () => h.mode());
+    $('editBtn').addEventListener('click', () => h.edit());
     $('cpBackBtn').addEventListener('click', () => h.cpBack());
     $('cpStartBtn').addEventListener('click', () => h.cpStart());
     $('guideBtn').addEventListener('click', () => { this.fillGuide(); this.guideP.hidden = false; this.menu.hidden = true; });
@@ -83,10 +89,29 @@ export class Ui {
     b.textContent = this.t(on ? 'practiceOn' : 'practiceOff');
     b.classList.toggle('on', on);
     $('modeNote').hidden = !on;
+    this.hudPractice(on);
+    document.querySelectorAll('.card').forEach((c) => c.classList.toggle('prac', on));
+  }
+
+  /** The HUD of a run that restarts from checkpoints: practice mode, and test drives from the editor. */
+  hudPractice(on: boolean, test = false): void {
+    const badge = this.prac.querySelector('b')!;
+    badge.dataset.i18n = test ? 'ed.testBadge' : 'practice';
+    badge.textContent = this.t(badge.dataset.i18n);
     this.prac.hidden = !on;
     this.attempt.hidden = on;
     this.ticks.hidden = !on;
-    document.querySelectorAll('.card').forEach((c) => c.classList.toggle('prac', on));
+  }
+
+  /** Where "back" leads from the pause and finish panels: the track list, or the editor during a test drive. */
+  setBack(key: 'levels' | 'ed.toEditor'): void {
+    for (const id of ['quitBtn', 'doneMenuBtn']) { const b = $(id); b.dataset.i18n = key; b.textContent = this.t(key); }
+  }
+
+  /** Everything of the game's own interface out of the way: the editor has the screen. */
+  showEditor(): void {
+    this.menu.hidden = true; this.hud.hidden = true; this.pauseP.hidden = true; this.doneP.hidden = true; this.guideP.hidden = true;
+    this.hint.classList.remove('on');
   }
 
   /** Checkpoint ticks on the progress bar: positions are 0..1, `current` is the one the next run starts from. */
@@ -105,7 +130,7 @@ export class Ui {
     document.documentElement.style.setProperty('--b', css2);
   }
 
-  showMenu(cards: LevelCard[]): void {
+  showMenu(cards: LevelCard[], custom: CustomCard[] = []): void {
     const box = $('levels');
     box.textContent = '';
     cards.forEach((c, i) => {
@@ -119,6 +144,26 @@ export class Ui {
       b.addEventListener('click', () => this.h.play(i));
       box.appendChild(b);
     });
+    // the player's own tracks, and the way into the editor
+    for (const c of custom) {
+      const b = document.createElement('button');
+      b.className = this.practice ? 'card mine prac' : 'card mine';
+      b.style.setProperty('--c1', c.css);
+      b.style.setProperty('--c2', c.css2);
+      b.innerHTML = `<span class="pen" aria-label="Edit">&#9998;</span><small>${this.t('myTrack')} &middot; ${c.bpm} BPM${c.music ? ' &#9834;' : ''}</small><strong></strong>
+        <div class="meter"><i style="width:${c.best}%"></i></div>
+        <div class="meta"><span>${c.best}%</span><span class="st">${'&#9733;'.repeat(c.stars)}<u>${'&#9733;'.repeat(3 - c.stars)}</u></span><span>&#9670; ${c.gems}/${c.gemTotal}</span></div>`;
+      b.querySelector('strong')!.textContent = c.name;
+      b.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('.pen')) this.h.edit(c.id); else this.h.playCustom(c.id); });
+      box.appendChild(b);
+    }
+    const add = document.createElement('button');
+    add.className = 'card new';
+    add.id = 'newTrack';
+    add.style.setProperty('--c1', 'var(--a)');
+    add.textContent = this.t('newTrack');
+    add.addEventListener('click', () => this.h.edit());
+    box.appendChild(add);
     this.menu.hidden = false; this.hud.hidden = true; this.pauseP.hidden = true; this.doneP.hidden = true; this.guideP.hidden = true;
     this.hint.classList.remove('on');
   }
@@ -127,12 +172,12 @@ export class Ui {
     this.menu.hidden = true; this.pauseP.hidden = true; this.doneP.hidden = true; this.hud.hidden = false;
   }
   showPause(): void { this.pauseP.hidden = false; }
-  showDone(stats: { attempts: number; gems: number; gemTotal: number; stars: number; hasNext: boolean; practice: boolean }): void {
+  showDone(stats: { attempts: number; gems: number; gemTotal: number; stars: number; hasNext: boolean; practice: boolean; test?: boolean }): void {
     document.querySelectorAll('#stars span').forEach((el, i) => el.classList.toggle('on', i < stats.stars));
     $('stars').hidden = stats.practice;
-    $('doneTitle').textContent = this.t(stats.practice ? 'practiceDone' : 'complete');
-    $('doneNote').textContent = this.t(stats.practice ? 'practiceNote' : 'starRule');
-    $('againBtn').textContent = this.t(stats.practice ? 'playReal' : 'again');
+    $('doneTitle').textContent = this.t(stats.test ? 'ed.testDone' : stats.practice ? 'practiceDone' : 'complete');
+    $('doneNote').textContent = this.t(stats.test ? 'ed.testNote' : stats.practice ? 'practiceNote' : 'starRule');
+    $('againBtn').textContent = this.t(stats.practice && !stats.test ? 'playReal' : 'again');
     $('doneStats').innerHTML = `${this.t('attempts')} <b>${stats.attempts}</b><br>${this.t('gems')} <b>&#9670; ${stats.gems}/${stats.gemTotal}</b>`;
     $('nextBtn').hidden = !stats.hasNext;
     this.doneP.hidden = false; this.hud.hidden = true;

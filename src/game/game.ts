@@ -1,16 +1,20 @@
-import { GameAudio } from '../audio/audio';
+import { GameAudio, type MusicTrack } from '../audio/audio';
 import { BEAT_LEN, CFG } from '../core/config';
+import { CUSTOM_PREFIX, toDef, type CustomLevel } from '../core/custom';
 import { Level } from '../core/level';
 import { LEVELS } from '../core/levels';
 import { Sim, type ShipState } from '../core/sim';
 import { PALETTES } from '../render/palette';
 import { View, type Pose } from '../render/view';
+import { Editor } from '../editor/editor';
 import { detectLang } from '../ui/i18n';
 import { Ui } from '../ui/ui';
+import { CustomStore } from './custom-store';
 import { Input } from './input';
 import { loadSave, storeSave } from './storage';
+import { Tracks } from './tracks';
 
-type Mode = 'menu' | 'play' | 'dead' | 'done' | 'pause';
+type Mode = 'menu' | 'play' | 'dead' | 'done' | 'pause' | 'edit';
 const RESPAWN = 0.62;
 
 /** Glue: fixed-step loop, mode changes, and routing sim events to view / audio / UI. */
@@ -42,6 +46,18 @@ export class Game {
   private hold = 0;
   /** Clock value at which the free-running menu theme started. */
   private menuT0 = 0;
+  /** The player's own tracks (level editor), and the one that is loaded when it is not an official track. */
+  private store = new CustomStore();
+  private tracks = new Tracks(this.store, this.audio);
+  private editor: Editor;
+  private custom?: { data: CustomLevel; level: Level; /** A test drive from the editor: nothing is recorded and "back" returns there. */ test: boolean; track?: MusicTrack };
+  /** Bumped whenever something else is started, so a track whose music was still loading does not start late. */
+  private loading = 0;
+
+  /** The track that is loaded. */
+  private get lvl(): Level { return this.custom?.level ?? this.levels[this.idx]; }
+  /** Runs restart from checkpoints: practice mode, and every test drive from the editor. */
+  private get prac(): boolean { return this.practice || !!this.custom?.test; }
 
   constructor(private view: View, surface: HTMLElement) {
     this.sim = new Sim(this.levels[0]);
@@ -54,13 +70,15 @@ export class Game {
       restart: () => {
         this.audio.unlock(); this.audio.resume();
         // "play for real" after a practice run
-        if (this.mode === 'done' && this.practice) this.setPractice(false);
+        if (this.mode === 'done' && this.practice && !this.custom?.test) this.setPractice(false);
         this.ui.showPlay(); this.respawn();
       },
       mode: () => { this.setPractice(!this.practice); if (this.mode === 'menu') this.toMenu(); return this.practice; },
       cpBack: () => this.jumpTo(Math.max(0, this.cp - 1)),
       cpStart: () => this.jumpTo(0),
-      menu: () => this.toMenu(),
+      menu: () => { if (this.custom?.test) this.toEditor(this.custom.data.id, Math.floor(this.sim.s.z / CFG.tileL)); else this.toMenu(); },
+      playCustom: (id) => void this.playCustom(id),
+      edit: (id) => this.toEditor(id),
       next: () => this.start(Math.min(this.idx + 1, this.levels.length - 1)),
       mute: () => {
         this.audio.unlock();
@@ -75,6 +93,13 @@ export class Game {
         this.ui.setLang(this.save.lang);
         if (this.mode === 'menu') this.toMenu();
       },
+    });
+    this.editor = new Editor({
+      store: this.store, tracks: this.tracks, audio: this.audio,
+      t: (key) => this.ui.t(key),
+      test: (level, row) => void this.playCustom(level.id, true, row),
+      exit: () => this.toMenu(),
+      changed: (id) => this.forget(CUSTOM_PREFIX + id),
     });
     this.ui.setMuted(this.save.muted);
     this.ui.setLang(this.save.lang ?? detectLang());
@@ -102,12 +127,70 @@ export class Game {
 
   private loadLevel(i: number): void {
     this.idx = i;
-    const level = this.levels[i];
+    this.custom = undefined;
+    this.show(this.levels[i]);
+  }
+
+  private show(level: Level): void {
     const pal = PALETTES[level.def.world % PALETTES.length];
     this.sim = new Sim(level);
     this.prev = { ...this.sim.s };
     this.view.loadLevel(level, pal);
     this.ui.setTheme(pal.css, pal.css2);
+  }
+
+  /** Records of a track that was edited or deleted no longer mean anything. */
+  private forget(id: string): void {
+    for (const k of ['best', 'gems', 'done', 'stars', 'practice'] as const) delete this.save[k][id];
+    storeSave(this.save);
+  }
+
+  /** Open the level editor on a stored track, or on a new one. `row` is where to look (back from a test drive). */
+  private toEditor(id?: string, row?: number): void {
+    this.loading++;
+    this.audio.unlock();
+    this.audio.resume();
+    this.audio.stopMusic();
+    this.mode = 'edit';
+    this.input.clear();
+    this.ui.hideCallout();
+    this.ui.hideBanner();
+    this.ui.setFlip(false, 0);
+    this.ui.setHype(0);
+    this.ui.showEditor();
+    this.editor.open(id, row);
+  }
+
+  /**
+   * Play a track from the editor: from the menu like any other, or as a test drive that starts at the
+   * checkpoint at or before `row`, restarts from checkpoints and records nothing.
+   */
+  private async playCustom(id: string, test = false, row = 0): Promise<void> {
+    const data = this.store.get(id);
+    if (!data) return;
+    this.audio.unlock();
+    const token = ++this.loading;
+    let track: MusicTrack | undefined;
+    if (data.music) {
+      // decoding a song takes a moment the first time
+      this.ui.showBanner(this.ui.t('ed.loading'), true);
+      track = await this.tracks.track(data);
+      this.ui.hideBanner();
+      if (token !== this.loading) return;
+    }
+    const level = new Level(toDef(data));
+    this.custom = { data, level, test, track };
+    this.show(level);
+    this.cp = 0;
+    const from = test ? row : this.practice ? this.save.practice[level.def.id] ?? 0 : 0;
+    level.checkpoints.forEach((c, k) => { if (c.row <= from) this.cp = k; });
+    this.view.setPractice(this.prac);
+    this.ui.hudPractice(this.prac, test);
+    this.ui.setBack(test ? 'ed.toEditor' : 'levels');
+    this.attempts = 0;
+    this.ui.showPlay();
+    this.respawn();
+    this.ui.showHint(this.touch || matchMedia('(pointer: coarse)').matches);
   }
 
   /** The menu theme runs on the clock instead of on a track. */
@@ -118,6 +201,7 @@ export class Game {
   }
 
   private toMenu(): void {
+    this.loading++;
     this.mode = 'menu';
     this.audio.resume();
     this.menuMusic();
@@ -134,6 +218,14 @@ export class Game {
         name: l.def.name, world: l.def.world, best: Math.round(this.save.best[l.def.id] ?? 0),
         gems: this.save.gems[l.def.id] ?? 0, gemTotal: l.gemCount, done: !!this.save.done[l.def.id], stars: this.save.stars[l.def.id] ?? 0, css: pal.css, css2: pal.css2, extreme: l.def.extreme,
       };
+    }), this.store.list().map((c) => {
+      const pal = PALETTES[c.world % PALETTES.length], id = CUSTOM_PREFIX + c.id;
+      let gemTotal = 0;
+      for (const r of c.rows) for (const ch of r) if ('oO*+'.includes(ch)) gemTotal++;
+      return {
+        id: c.id, name: c.name, world: c.world, bpm: Math.round(c.speed * 5), music: !!c.music, best: Math.round(this.save.best[id] ?? 0),
+        gems: this.save.gems[id] ?? 0, gemTotal, done: !!this.save.done[id], stars: this.save.stars[id] ?? 0, css: pal.css, css2: pal.css2,
+      };
     }));
   }
 
@@ -147,19 +239,21 @@ export class Game {
 
   /** Practice: move the restart point and restart from it. */
   private jumpTo(cp: number): void {
-    if (!this.practice || (this.mode !== 'play' && this.mode !== 'dead')) return;
+    if (!this.prac || (this.mode !== 'play' && this.mode !== 'dead')) return;
     this.cp = cp;
     this.storeCp();
     this.respawn();
   }
 
   private storeCp(): void {
-    const level = this.levels[this.idx];
+    if (this.custom?.test) return;
+    const level = this.lvl;
     this.save.practice[level.def.id] = level.checkpoints[this.cp].row;
     storeSave(this.save);
   }
 
   private start(i: number): void {
+    this.loading++;
     this.audio.unlock();
     if (i !== this.idx || this.mode === 'menu') this.loadLevel(i);
     // practice picks up at the checkpoint saved for this track
@@ -168,6 +262,8 @@ export class Game {
     this.cp = 0;
     level.checkpoints.forEach((c, k) => { if (c.row <= row) this.cp = k; });
     this.view.setPractice(this.practice);
+    this.ui.hudPractice(this.practice);
+    this.ui.setBack('levels');
     this.attempts = 0;
     this.ui.showPlay();
     this.respawn();
@@ -175,8 +271,8 @@ export class Game {
   }
 
   private respawn(): void {
-    const lvl = this.levels[this.idx];
-    if (this.practice) {
+    const lvl = this.lvl;
+    if (this.prac) {
       this.sim.spawnAt(lvl.checkpoints[this.cp]);
       this.hold = this.cp > 0 ? 0.55 : 0;
     } else {
@@ -194,21 +290,21 @@ export class Game {
     this.ui.hideBanner();
     this.ui.setFlip(false, 0);
     this.setHype(0);
-    this.prevBest = this.save.best[this.levels[this.idx].def.id] ?? 0;
+    this.prevBest = this.save.best[this.lvl.def.id] ?? 0;
     this.input.clear();
     this.view.resetRun();
-    if (this.practice) {
+    if (this.prac) {
       this.view.checkpoint(this.pose(1));
       this.ui.setCheckpoints(lvl.checkpoints.slice(1).map((c) => c.z / lvl.finishZ), this.cp - 1);
       if (this.hold > 0) this.ui.showCallout(this.ui.t('ready'));
     }
     this.attempts++;
-    const id = this.levels[this.idx].def.id;
+    const id = this.lvl.def.id;
     this.save.attempts[id] = (this.save.attempts[id] ?? 0) + 1;
     this.ui.setAttempt(this.attempts);
-    this.ui.setHud(0, 0, this.levels[this.idx].gemCount);
+    this.ui.setHud(0, 0, this.lvl.gemCount);
     // the song starts at the beat the ship stands on, so a checkpoint restart resumes mid-song
-    this.audio.playSong(lvl.def.song, { energy: (bar) => lvl.energyOf(bar), from: lvl.beatAt(this.sim.s.z), muffled: this.sim.s.flip });
+    this.audio.playSong(lvl.def.song, { energy: (bar) => lvl.energyOf(bar), from: lvl.beatAt(this.sim.s.z), muffled: this.sim.s.flip, track: this.custom?.track });
     this.mode = 'play';
   }
 
@@ -221,20 +317,20 @@ export class Game {
 
   /** Rewards for progress within a run: halfway, then beating the stored record. */
   private milestones(): void {
-    if (this.practice) {
+    if (this.prac) {
       // practice has checkpoints instead of rewards
-      const k = this.levels[this.idx].checkpointAt(this.sim.s.z);
+      const k = this.lvl.checkpointAt(this.sim.s.z);
       if (k > this.cp && this.sim.s.alive) {
         this.cp = k;
         this.storeCp();
         this.audio.checkpoint();
         this.view.checkpoint(this.pose(1));
-        const lvl = this.levels[this.idx];
+        const lvl = this.lvl;
         this.ui.setCheckpoints(lvl.checkpoints.slice(1).map((c) => c.z / lvl.finishZ), this.cp - 1);
       }
       return;
     }
-    const pct = (this.sim.s.z / this.levels[this.idx].finishZ) * 100;
+    const pct = (this.sim.s.z / this.lvl.finishZ) * 100;
     if (this.hype < 1 && pct >= 50) {
       this.setHype(1);
       this.view.milestone('half', this.pose(1));
@@ -271,13 +367,13 @@ export class Game {
     return {
       x: L(a.x, b.x), y: L(a.y, b.y), z: L(a.z, b.z) + this.coast, vx: b.vx, vy: b.vy, speed: b.speed,
       grounded: b.grounded, boosting: b.boost > 0, alive: b.alive && !b.finished,
-      t: this.levels[this.idx].beatAt(L(a.z, b.z)), flip: b.flip,
+      t: this.lvl.beatAt(L(a.z, b.z)), flip: b.flip,
     };
   }
 
   private drainEvents(): void {
     const s = this.sim.s;
-    const level = this.levels[this.idx];
+    const level = this.lvl;
     const id = level.def.id;
     for (const e of this.sim.events) {
       this.view.onEvent(e, this.pose(1));
@@ -290,7 +386,7 @@ export class Game {
         this.audio.stopMusic();
         this.input.clear();
         const pct = Math.min(99, Math.floor((s.z / level.finishZ) * 100));
-        if (!this.practice && pct > (this.save.best[id] ?? 0)) {
+        if (!this.prac && pct > (this.save.best[id] ?? 0)) {
           this.save.best[id] = pct;
           storeSave(this.save);
           if (pct >= 5) { this.ui.showBanner(`${this.ui.t('record')} ${pct}%`, true); this.timer = 1.25; }
@@ -299,7 +395,7 @@ export class Game {
         this.audio.stopMusic();
         this.mode = 'done';
         this.timer = 1.1;
-        if (this.practice) {
+        if (this.prac) {
           // a practice run earns nothing; the next one starts from the beginning again
           this.cp = 0;
           this.save.practice[id] = 0;
@@ -318,7 +414,7 @@ export class Game {
   }
 
   private stars(): number {
-    const got = this.sim.collected.size, total = this.levels[this.idx].gemCount;
+    const got = this.sim.collected.size, total = this.lvl.gemCount;
     return 1 + (got * 2 >= total ? 1 : 0) + (got >= total ? 1 : 0);
   }
 
@@ -326,7 +422,8 @@ export class Game {
     requestAnimationFrame(this.loop);
     const dt = Math.min(0.1, Math.max(0, (now - this.last) / 1000));
     this.last = now;
-    if (this.mode === 'pause') return;
+    // the editor has the screen to itself: nothing is simulated or drawn behind it
+    if (this.mode === 'pause' || this.mode === 'edit') return;
     this.clock += dt;
 
     if (this.mode === 'play') {
@@ -347,15 +444,15 @@ export class Game {
       const danger = fs.flip && fs.alive ? Math.max(0, Math.min(1, (fs.y - (CFG.flipCeil - 3)) / 3)) : 0;
       this.ui.setFlip(fs.flip && this.mode === 'play', danger);
       if (danger > 0.45) this.audio.warn(danger);
-      const def = this.levels[this.idx].def;
-      if (def.hints && (this.practice || !this.save.done[def.id])) {
+      const def = this.lvl.def;
+      if (def.hints && (this.prac || !this.save.done[def.id])) {
         const row = this.sim.s.z / CFG.tileL;
         while (this.nextHint < def.hints.length && row >= def.hints[this.nextHint].row) {
           if (this.mode === 'play') this.ui.showCallout(this.ui.t('hint.' + def.hints[this.nextHint].key));
           this.nextHint++;
         }
       }
-      this.ui.setHud(this.sim.s.z / this.levels[this.idx].finishZ, this.sim.collected.size, this.levels[this.idx].gemCount);
+      this.ui.setHud(this.sim.s.z / this.lvl.finishZ, this.sim.collected.size, this.lvl.gemCount);
     } else if (this.mode === 'dead') {
       this.timer -= dt;
       const skip = this.input.tapped && this.timer < RESPAWN - 0.18;
@@ -370,8 +467,8 @@ export class Game {
         this.doneShown = true;
         this.menuMusic();
         this.ui.showDone({
-          attempts: this.attempts, gems: this.sim.collected.size, gemTotal: this.levels[this.idx].gemCount, stars: this.stars(),
-          hasNext: this.idx < this.levels.length - 1, practice: this.practice,
+          attempts: this.attempts, gems: this.sim.collected.size, gemTotal: this.lvl.gemCount, stars: this.stars(),
+          hasNext: !this.custom && this.idx < this.levels.length - 1, practice: this.prac, test: this.custom?.test,
         });
       }
     }

@@ -44,6 +44,7 @@
     <button id="fsBtn" class="ghost" data-i18n="fullscreen">FULLSCREEN</button>
     <button id="langBtn" class="ghost" data-i18n="switchLang">SUOMEKSI</button>
     <button id="modeBtn" class="ghost">PRACTICE: OFF</button>
+    <button id="editBtn" class="ghost" data-i18n="editor">EDITOR</button>
     <button id="guideBtn" class="ghost" data-i18n="guide">GUIDE</button>
   </div>
   <p id="modeNote" class="note2" data-i18n="practiceMenu" hidden></p>
@@ -74,6 +75,46 @@
     <button id="nextBtn" class="big" data-i18n="next">NEXT LEVEL</button>
     <button id="againBtn" class="ghost" data-i18n="again">PLAY AGAIN</button>
     <button id="doneMenuBtn" class="ghost" data-i18n="levels">LEVELS</button>
+  </div>
+</section>
+
+<section id="editor" hidden>
+  <div id="edTop">
+    <button id="edBack" class="icon" aria-label="Back">&#9664;</button>
+    <input id="edName" maxlength="24" spellcheck="false" autocomplete="off" autocapitalize="characters" enterkeyhint="done" aria-label="Name">
+    <span id="edInfo"></span>
+    <button id="edUndo" class="icon" aria-label="Undo">&#8630;</button>
+    <button id="edRedo" class="icon" aria-label="Redo">&#8631;</button>
+    <button id="edZoom" class="icon" aria-label="Zoom">&#177;</button>
+    <button id="edSet" class="ghost" data-i18n="ed.music">MUSIC</button>
+    <button id="edAuto" class="ghost" data-i18n="ed.auto">AUTO</button>
+    <button id="edCheck" class="ghost" data-i18n="ed.check">CHECK</button>
+    <button id="edTest" class="big" data-i18n="ed.test">TEST</button>
+  </div>
+  <canvas id="edGrid"></canvas>
+  <button id="edStatus"></button>
+  <div id="edTools">
+    <div id="edTabs"><button id="edTabFigs" data-i18n="ed.figs">FIGURES</button><button id="edTabTiles" data-i18n="ed.tiles">BLOCKS</button></div>
+    <div id="edPalette"></div>
+  </div>
+  <div id="edPanel" hidden>
+    <div class="ed-sheet">
+      <div class="ed-row ed-head"><h3 data-i18n="ed.musicTitle">MUSIC</h3><button id="edClose" class="big" data-i18n="ed.done">DONE</button></div>
+      <div class="ed-row"><button id="edPick" class="big" data-i18n="ed.pick">CHOOSE A MUSIC FILE</button><input id="edFile" type="file" accept="audio/*" hidden></div>
+      <p id="edMusicInfo" class="ed-note"></p>
+      <div id="edMusicCtl" hidden>
+        <div class="ed-row"><label data-i18n="ed.tempo">TEMPO</label><button data-bpm="-1">&minus;1</button><button data-bpm="-0.1">&minus;0.1</button><b id="edBpm"></b><button data-bpm="0.1">+0.1</button><button data-bpm="1">+1</button></div>
+        <div class="ed-row"><label data-i18n="ed.start">START</label><button data-first="-4" aria-label="One bar earlier">&#9664;&#9664;</button><button data-first="-1" aria-label="One beat earlier">&#9664;</button><b id="edStart"></b><button data-first="1" aria-label="One beat later">&#9654;</button><button data-first="4" aria-label="One bar later">&#9654;&#9654;</button><button data-half="1" id="edHalf" aria-label="Half a beat later">&frac12;</button><button data-nudge="-0.01">&minus;10 ms</button><button data-nudge="0.01">+10 ms</button></div>
+        <div class="ed-row"><button id="edListen" class="ghost"></button><button id="edFit" class="ghost" data-i18n="ed.fit">LENGTH FROM THE SONG</button><button id="edNoMusic" class="ghost" data-i18n="ed.noMusic">REMOVE THE FILE</button></div>
+        <p class="ed-note" data-i18n="ed.musicHelp"></p>
+      </div>
+      <div class="ed-row"><label id="edSongLabel"></label><div id="edSongs" class="ed-chips"></div></div>
+      <div class="ed-row" id="edSpeedRow"><label data-i18n="ed.speed">SPEED</label><input id="edSpeed" type="range" step="1"><b id="edSpeedVal"></b></div>
+      <h3 data-i18n="ed.trackTitle">TRACK</h3>
+      <div class="ed-row"><label data-i18n="ed.theme">WORLD</label><div id="edThemes" class="ed-chips"></div></div>
+      <div class="ed-row"><label data-i18n="ed.length">LENGTH</label><button data-bars="-4">&minus;4</button><b id="edBars"></b><button data-bars="4">+4</button></div>
+      <div class="ed-row"><button id="edDelete" class="ghost"></button></div>
+    </div>
   </div>
 </section>
 

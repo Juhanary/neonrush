@@ -11,6 +11,8 @@
 7. The ship never takes colours from the world. It is built once from parts and a `Paint` (`src/render/ship.ts`) and owns the colour of its trail and exhaust.
 8. Sight line: nothing decorative is drawn in the corridor above the road ahead of the ship. Rewards fire as fountains beside the road, banners sit in the sky above the horizon, trails are short, and the flip-zone ceiling is dim.
 
+9. Player-made tracks (`core/custom.ts`) are the same rows as official ones. The editor (`src/editor`) only edits and stores them; see `docs/EDITOR.md`.
+
 ## Frame flow
 
 ```
@@ -70,6 +72,7 @@ The split was made so a Godot version reuses the design instead of re-deriving i
 | tile / sky GLSL | `shader_type spatial` (unshaded) and a sky shader; the maths carries over |
 | bloom | `WorldEnvironment` glow; draw the ship in a second pass or exclude it from glow |
 | particles | `GPUParticles3D` or the same pooled CPU approach |
-| `tests/levels.test.ts` bot | port with the sim (GUT) so levels stay provably finishable |
+| `core/solve.ts` bot, `core/rules.ts`, `core/figures.ts` | port with the sim so official and player-made tracks stay provably finishable |
+| `audio/analyze.ts` | plain arithmetic on samples; ports as is |
 
 To keep the port cheap: no gameplay logic in `src/render`, no browser APIs in `src/core`, and levels stay data.

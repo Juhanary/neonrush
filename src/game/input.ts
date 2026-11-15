@@ -66,7 +66,8 @@ export class Input {
     surface.addEventListener('contextmenu', (e) => e.preventDefault());
 
     window.addEventListener('keydown', (e) => {
-      if (e.repeat) return;
+      // typing in a text field (the track name in the editor) is not playing
+      if (e.repeat || (e.target as HTMLElement | null)?.tagName === 'INPUT') return;
       this.keys.add(e.code);
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
         e.preventDefault();

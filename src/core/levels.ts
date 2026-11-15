@@ -1,4 +1,4 @@
-import { BAR_ROWS, CFG } from './config';
+import { F, G, bar, boost, hop, leap, mount, on, pad, run, type Rows } from './figures';
 import type { LevelDef } from './level';
 
 /*
@@ -14,35 +14,11 @@ import type { LevelDef } from './level';
  *   - an idea lasts a whole number of bars; gravity-flip zones start and end on bar lines;
  *   - a jump lasts longer than a beat, so the beat right after a take-off is never another take-off;
  *   - jump pads land straight ahead with no steering.
- * The helpers below build one beat (three rows) at a time, and `bar` refuses anything that is not 12 rows.
+ * The helpers (figures.ts) build one beat (three rows) at a time, and `bar` refuses anything that is not 12 rows.
  * See docs/LEVELS.md for the full method.
  * Spikes ('x') kill on contact and cannot be landed on: put a spike row on the third row of a beat
  * (`[F, F, 'xxxxx']`), never more than two rows deep, and jump it on the beat.
  */
-
-type Rows = string[];
-const F = '=====', G = '.....';
-
-/** `beats` beats of one and the same row. */
-const run = (row = F, beats = 1): Rows => Array<string>(beats * CFG.rowsPerBeat).fill(row);
-/** One beat whose beat row is `first` (a wall, a pad, a gem row) followed by `rest`. */
-const on = (first: string, rest = F): Rows => [first, rest, rest];
-/** Jump on the beat: take off from `from`, then a two-row gap. `air` is the first gap row (for a gem). */
-const hop = (from = F, air = G): Rows => [from, air, G];
-/** Long jump, two beats: a three-row gap. Needs 28 m/s or more. */
-const leap = (from = F, to = F): Rows => [from, G, G, G, to, to];
-/** Jump onto a wall of blocks, two beats: take off on the beat, land on top, drive off. */
-const mount = (wall = '#####', after = F): Rows => [F, F, wall, wall, wall, after];
-/** Jump pad, two beats: launches on the beat, `air` holds gems, lands straight ahead on what follows. */
-const pad = (air = '..+..', gapRows = 5): Rows => ['^^^^^', air, air, ...Array<string>(gapRows - 2).fill(G), ...Array<string>(5 - gapRows).fill(F)];
-/** Boost pad and the long jump it is for, four beats (a whole bar). */
-const boost = (air = '.*.*.'): Rows => ['>>>>>', F, F, F, F, F, F, air, G, G, G, F];
-/** Exactly one bar. */
-const bar = (...parts: Rows[]): Rows => {
-  const rows = parts.flat();
-  if (rows.length !== BAR_ROWS) throw new Error(`A bar is ${BAR_ROWS} rows, got ${rows.length}: ${rows.join(' ')}`);
-  return rows;
-};
 
 /** A hint marker between bars: shown `lead` rows before the row that follows it (negative = later). `hint` is a text key (ui/i18n.ts). */
 interface Hint { hint: string; lead: number }

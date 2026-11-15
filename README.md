@@ -20,6 +20,7 @@ npm run audio:check  # offline render of every song: clipping and balance (needs
 - Keyboard: A/D or arrows steer, Space jumps, R restarts, Esc pauses.
 - Practice mode (menu): runs restart from the last checkpoint, which is saved per track. The two arrows next to the pause button step back one checkpoint or to the start.
 - Guide (menu): explains every tile and mechanic.
+- Editor (menu): build your own tracks from figures and blocks, add your own music (its tempo sets the speed), let a bot check the track, test drive it.
 
 ## Layout
 
@@ -30,7 +31,8 @@ npm run audio:check  # offline render of every song: clipping and balance (needs
 | `src/audio` | Synthesised music and effects (WebAudio). |
 | `src/game` | Fixed-step loop, input, save data. |
 | `src/ui` | DOM HUD and menus. |
+| `src/editor` | The level editor screen. |
 | `tests` | Vitest: determinism, jump distance, level completability at two reaction speeds, jump pads, flip zones, practice checkpoints. |
 | `scripts` | Headless Chrome smoke tests and screenshots. |
 
-See `docs/ARCHITECTURE.md` for the design rules and the notes on a later Godot port, `docs/LEVELS.md` for building tracks on the beat grid, `docs/MUSIC.md` for writing songs that match them, and `docs/TESTING.md` for the test routine.
+See `docs/ARCHITECTURE.md` for the design rules and the notes on a later Godot port, `docs/LEVELS.md` for building tracks on the beat grid, `docs/MUSIC.md` for writing songs that match them, `docs/EDITOR.md` for the level editor and the music analysis, and `docs/TESTING.md` for the test routine.

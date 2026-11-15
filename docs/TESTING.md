@@ -13,6 +13,8 @@ Run these in order after any change to `src/core`, a track or a song. Stop at th
 | 7 | `node scripts/tour.mjs http://localhost:4173/ /tmp/shots <index> "<row>[:x[:y]] ..."` | frames at chosen rows; look at them |
 | 8 | `npm run audio:check` and `node scripts/sync.mjs http://localhost:4173/` | mix levels, music starts and follows |
 
+After a change to the editor, the analysis or custom tracks also run the three scripts in `docs/EDITOR.md` (Testing).
+
 ## What `npm test` covers
 
 - **Completable**: a bot deciding every 50 ms finishes every track; so does one deciding every 100 ms.
@@ -22,6 +24,8 @@ Run these in order after any change to `src/core`, a track or a song. Stop at th
 - **Practice checkpoints**: enough of them, never more than 34 rows apart, none kills at once, and from each one the bot gets past the checkpoint after next.
 - **Beat clock**: exact, ordered scheduling through jitter, slow frames, speed changes and restarts.
 - **Sim**: determinism and basic jump distance.
+- **Music analysis**: tempo within 0.01 BPM and first beat within 4 ms on synthetic songs from 100 to 174 BPM, octave folding, bar line, bar intensity.
+- **Editor core**: sliced solver equals the whole one; stuck tracks are given up on quickly; every figure is whole beats, rule-clean and passable on the beat; automatic fill gives tracks both bots finish at 19 to 38 m/s; stored tracks load defensively.
 
 ## Reading a failure
 
