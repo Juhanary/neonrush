@@ -118,7 +118,7 @@ export const SONGS: Record<string, Song> = {
   /** World 3, 140 BPM: E phrygian half-time with a wobble bass and an eerie triangle lead. */
   toxic: {
     key: 64, scale: PHRYGIAN, chords: '1127', kit: HALF,
-    bass: { kind: 'wobble', oct: -3, pat: ['1-------1-------', '1-------1---1-3-', '1-----1-1---1-5-'] },
+    bass: { kind: 'wobble', oct: -2, pat: ['1-------1-------', '1-------1---1-3-', '1-----1-1---1-5-'] },
     arp: { oct: 1, pat: '1..5..8..5..1.5.', bright: 2600, from: 2 },
     pad: { oct: -1, from: 1 },
     lead: {

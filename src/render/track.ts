@@ -41,6 +41,17 @@ vec3 hue(float h) { return 0.5 + 0.5 * cos(6.2832 * (h + vec3(0.0, 0.33, 0.67)))
 varying vec3 vLocal, vScale, vWorld;
 varying float vKind, vSeed, vAhead;
 
+// The beat grid drawn on the road: a line across the middle of every beat row (where the ship is when
+// the beat sounds), brighter and in the accent colour on the first beat of a bar. It flashes on the beat.
+vec3 beatLine() {
+  float rowf = -vWorld.z / 4.0;
+  float r = floor(rowf);
+  if (mod(r, 3.0) > 0.5) return vec3(0.0);
+  float bar = 1.0 - step(0.5, mod(r, 12.0));
+  float line = smoothstep(0.11, 0.03, abs(fract(rowf) - 0.5)) * smoothstep(0.5, 0.42, abs(vLocal.x));
+  return mix(uEdge, uAccent, bar) * line * (0.16 + 0.2 * bar) * (0.7 + 0.9 * uBeat) * smoothstep(120.0, 60.0, vAhead);
+}
+
 float chevrons(float speed) {
   float f = fract(vLocal.z * 2.5 - abs(vLocal.x) * 2.2 + uTime * speed);
   return smoothstep(0.35, 0.5, f) * smoothstep(0.95, 0.8, f);
@@ -62,7 +73,7 @@ void main() {
   if (vKind < 0.5) {            // floor
     float chk = mod(floor(vWorld.x / 2.4 + 50.0) + floor(-vWorld.z / 4.0), 2.0);
     base = uFloor * (0.42 + 0.2 * chk) * (top ? 1.0 : 0.55);
-    if (top) base += uEdge * (0.03 * near + 0.04 * uBeat);
+    if (top) base += uEdge * (0.03 * near + 0.04 * uBeat) + beatLine();
     ecol = mix(uEdge, hue(vAhead * 0.02 - uTime * 0.7) * 1.2, 0.8 * uRec);
     gain = (0.85 + 0.75 * near * (0.5 + 0.5 * wave) + 0.4 * uBeat) * (1.0 + 0.3 * uHype + 0.2 * uRec);
   } else if (vKind < 1.5) {     // block (obstacle)
@@ -92,7 +103,7 @@ void main() {
     float streak = smoothstep(0.75, 1.0, sin(vWorld.x * 2.3 + vWorld.z * 0.9));
     float spark = step(0.985, fract(sin(dot(floor(vWorld.xz * 3.0), vec2(12.9898, 78.233))) * 43758.5453 + uTime * 0.7));
     base = mix(uFloor, ice, top ? 0.42 + 0.2 * streak : 0.25) * 0.6;
-    if (top) base += vec3(1.0) * spark * 0.8;
+    if (top) base += vec3(1.0) * spark * 0.8 + beatLine();
     ecol = vec3(0.75, 0.93, 1.0); gain = 0.95 + 0.35 * uBeat;
   } else if (vKind > 7.5 && vKind < 8.5) {   // rail: a bright narrow beam
     float run = 0.5 + 0.5 * sin(vWorld.z * 1.4 + uTime * 9.0);

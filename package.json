@@ -8,7 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "build:single": "SINGLE=1 vite build --outDir dist-single"
+    "build:single": "SINGLE=1 vite build --outDir dist-single",
+    "level:report": "REPORT=1 vitest run tests/report.test.ts",
+    "audio:check": "node scripts/audio.mjs http://localhost:4173/"
   },
   "dependencies": {
     "three": "^0.187.0"

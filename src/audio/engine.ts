@@ -256,7 +256,7 @@ export class Voices {
       lfo.connect(depth).connect(f.frequency);
       this.osc('sawtooth', f0, t, end).connect(f);
       this.osc('square', f0 * 2, t, end, -8).connect(f);
-      f.connect(this.amp(t, v * 0.3, 0.01, 0.1, 0.9, dur, 0.05)).connect(out);
+      f.connect(this.amp(t, v * 0.25, 0.01, 0.1, 0.9, dur, 0.05)).connect(out);
       this.osc('sine', f0, t, end).connect(this.amp(t, v * 0.24, 0.006, 0.1, 0.8, dur, 0.05)).connect(out);
     }
   }

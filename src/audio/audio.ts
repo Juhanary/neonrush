@@ -1,4 +1,5 @@
 import type { SimEvent } from '../core/sim';
+import { BeatClock } from './clock';
 import { Mix, Voices, mtof } from './engine';
 import { SONGS, chordRoot, noteOf, playStep, type Song } from './songs';
 
@@ -28,18 +29,15 @@ export class GameAudio {
   private songName = '';
   private energy: (bar: number) => number = () => 2;
   private playing = false;
-  /** Next sixteenth to schedule. */
-  private next = 0;
-  /** Timeline anchor: beat `anchorB` sounds at context time `anchorT`, moving at `bps` beats per second. */
-  private anchorT = 0;
-  private anchorB = 0;
-  private bps = 0;
+  private clock = new BeatClock();
   private lastWarn = 0;
   private gemCombo = 0;
   private lastGem = 0;
   /** 0 normal, 1 past halfway, 2 record run: each level adds instrument layers. */
   hype = 0;
   muted = false;
+  /** Debug: when set, every scheduled sixteenth is recorded here as [step, context time]. */
+  log?: [number, number][];
 
   /** Must be called from a user gesture. */
   unlock(): void {
@@ -79,8 +77,7 @@ export class GameAudio {
     const own = this.song.energy?.replace(/\s/g, '');
     const loop = this.song.loop ?? 16;
     this.energy = opt.energy ?? ((bar) => (own ? +own[((bar % loop) + loop) % loop] : 2));
-    this.next = Math.ceil((opt.from ?? 0) * 4 - 1e-6);
-    this.bps = 0;
+    this.clock.reset(opt.from ?? 0);
     this.gemCombo = 0;
     if (!this.ctx) return;
     this.playing = true;
@@ -107,45 +104,28 @@ export class GameAudio {
   sync(beat: number, bps: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.playing || ctx.state !== 'running') return;
-    const now = ctx.currentTime;
-    if (bps < 0.01) { this.bps = 0; return; }
-    const predicted = this.anchorB + (now - this.anchorT) * this.bps;
-    const err = beat - predicted;
-    if (this.bps === 0 || Math.abs(bps - this.bps) > 1e-6 || Math.abs(err) > 0.05) {
-      // speed changed or the position jumped: take the new position as the truth
-      this.anchorT = now; this.anchorB = beat; this.bps = bps;
-      this.mix.setStep(1 / (bps * 4));
-    } else {
-      // steady speed: keep the timeline rigid (no frame jitter in the rhythm) and only trim drift
-      this.anchorB += err * 0.04;
-    }
-    if (beat * 4 < this.next - 4) this.next = Math.ceil(beat * 4); // went backwards (restart)
-    const sd = 1 / (this.bps * 4);
+    const was = this.clock.bps;
+    const due = this.clock.advance(ctx.currentTime, beat, bps);
+    if (this.clock.bps !== was && this.clock.bps > 0) this.mix.setStep(1 / (this.clock.bps * 4));
+    if (!due.length) return;
+    const sd = 1 / (this.clock.bps * 4);
     const loop = this.song.loop ? this.song.loop * 16 : 0;
-    for (let guard = 0; guard < 16; guard++) {
-      const t = this.anchorT + (this.next / 4 - this.anchorB) / this.bps;
-      if (t > now + 0.13) break;
-      if (t > now - 0.04) {
-        const step = loop ? this.next % loop : this.next;
-        const bar = Math.floor(step / 16);
-        playStep(this.v, this.song, { step, t: Math.max(t, now + 0.004), sd, energy: this.energy(bar), next: this.energy(bar + 1), hype: this.hype });
-      }
-      this.next++;
+    for (const d of due) {
+      const step = loop ? d.step % loop : d.step;
+      const bar = Math.floor(step / 16);
+      this.log?.push([d.step, d.t]);
+      playStep(this.v, this.song, { step, t: d.t, sd, energy: this.energy(bar), next: this.energy(bar + 1), hype: this.hype });
     }
   }
 
   /** Context time of the next sixteenth (sound effects that should land in the groove wait for it). */
   private grid(maxWait = 0.16): number {
     const now = this.ctx!.currentTime;
-    if (!this.playing || this.bps === 0) return now;
-    const pos = (this.anchorB + (now - this.anchorT) * this.bps) * 4;
-    const wait = (Math.ceil(pos - 0.08) - pos) / (this.bps * 4);
-    return wait > 0 && wait < maxWait ? now + wait : now;
+    return this.playing ? this.clock.grid(now, maxWait) : now;
   }
   /** A note of the chord that is sounding right now: 0 root, 1 third, 2 fifth, 3 octave, 4 third above ... */
   private chordNote(i: number, oct: number): number {
-    const now = this.ctx!.currentTime;
-    const bar = this.bps ? Math.floor((this.anchorB + (now - this.anchorT) * this.bps) / 4) : 0;
+    const bar = this.clock.bps ? Math.floor(this.clock.beatAt(this.ctx!.currentTime) / 4) : 0;
     const k = Math.max(0, i);
     return noteOf(this.song, chordRoot(this.song, bar) + [0, 2, 4][k % 3] + 7 * Math.floor(k / 3), oct);
   }
@@ -173,7 +153,7 @@ export class GameAudio {
   milestone(kind: 'half' | 'record'): void {
     const ctx = this.ctx;
     if (!ctx || ctx.state !== 'running') return;
-    const t = this.grid(), v = this.v, sd = this.bps ? 1 / (this.bps * 4) : 0.1;
+    const t = this.grid(), v = this.v, sd = this.clock.bps ? 1 / (this.clock.bps * 4) : 0.1;
     if (kind === 'half') {
       [0, 2, 3].forEach((n, i) => v.lead(this.chordNote(n, 1), t + i * sd, sd * 1.5, 0.55, 'tri', this.mix.sfx));
       v.hiss(t, 0.5, 0.12, 'bandpass', 800, 7000);
