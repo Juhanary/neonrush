@@ -2,9 +2,14 @@ import * as THREE from 'three';
 
 const N = 1800;
 
-/** Pooled additive point particles shared by every effect in the game. */
+/**
+ * Pooled point particles. The default pool is additive (sparks, glow) and fades by darkening.
+ * A `dark` pool is drawn with normal blending, so it can show dark colours (smoke, soot): it fades
+ * by transparency and its puffs grow as they age instead of shrinking.
+ */
 export class Particles {
   readonly points: THREE.Points;
+  private alpha: Float32Array;
   private pos = new Float32Array(N * 3);
   private col = new Float32Array(N * 3);
   private size = new Float32Array(N);
@@ -18,28 +23,46 @@ export class Particles {
   private next = 0;
   private mat: THREE.ShaderMaterial;
 
-  constructor() {
+  constructor(private readonly dark = false, private readonly n = N) {
+    this.alpha = new Float32Array(n);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     geo.setAttribute('aColor', new THREE.BufferAttribute(this.col, 3));
     geo.setAttribute('aSize', new THREE.BufferAttribute(this.size, 1));
+    geo.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1));
     this.mat = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      transparent: true, depthWrite: false,
+      // dark puffs blend colour only: normal blending would also lower the frame's alpha, and the page behind
+      // the canvas would then shine through the smoke and make it look light instead of dark
+      blending: dark ? THREE.CustomBlending : THREE.AdditiveBlending,
+      blendEquation: THREE.AddEquation, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+      blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+      defines: dark ? { DARK: 1 } : {},
       uniforms: { uScale: { value: 600 } },
       vertexShader: /* glsl */ `
-        attribute vec3 aColor; attribute float aSize; uniform float uScale; varying vec3 vC;
+        attribute vec3 aColor; attribute float aSize; attribute float aAlpha; uniform float uScale; varying vec3 vC; varying float vA;
         void main() {
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          vC = aColor * smoothstep(1.5, 5.0, -mv.z); // fade out near the lens instead of turning into a big blob
+        #ifdef DARK
+          float nearFade = smoothstep(0.8, 2.5, -mv.z);
+        #else
+          float nearFade = smoothstep(1.5, 5.0, -mv.z); // fade out near the lens instead of turning into a big blob
+        #endif
+          vC = aColor * nearFade;
+          vA = aAlpha * nearFade;
           gl_PointSize = aSize * uScale / max(-mv.z, 0.5);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */ `
-        varying vec3 vC;
+        varying vec3 vC; varying float vA;
         void main() {
           float r = length(gl_PointCoord - 0.5);
           float a = smoothstep(0.5, 0.05, r);
+        #ifdef DARK
+          gl_FragColor = vec4(vC, a * vA);
+        #else
           gl_FragColor = vec4(vC * a * a, 1.0);
+        #endif
         }`,
     });
     this.points = new THREE.Points(geo, this.mat);
@@ -53,7 +76,7 @@ export class Particles {
   spawn(x: number, y: number, z: number, vx: number, vy: number, vz: number,
         life: number, size: number, c: THREE.Color, drag = 0, grav = 0): void {
     const i = this.next;
-    this.next = (i + 1) % N;
+    this.next = (i + 1) % this.n;
     const j = i * 3;
     this.pos[j] = x; this.pos[j + 1] = y; this.pos[j + 2] = z;
     this.vel[j] = vx; this.vel[j + 1] = vy; this.vel[j + 2] = vz;
@@ -80,7 +103,7 @@ export class Particles {
   }
 
   update(dt: number): void {
-    for (let i = 0; i < N; i++) {
+    for (let i = 0; i < this.n; i++) {
       if (this.life[i] <= 0) { this.size[i] = 0; continue; }
       this.life[i] -= dt;
       const j = i * 3;
@@ -88,12 +111,20 @@ export class Particles {
       this.vel[j] *= d; this.vel[j + 1] = this.vel[j + 1] * d - this.grav[i] * dt; this.vel[j + 2] *= d;
       this.pos[j] += this.vel[j] * dt; this.pos[j + 1] += this.vel[j + 1] * dt; this.pos[j + 2] += this.vel[j + 2] * dt;
       const k = Math.max(0, this.life[i] / this.max[i]);
-      this.col[j] = this.base[j] * k; this.col[j + 1] = this.base[j + 1] * k; this.col[j + 2] = this.base[j + 2] * k;
-      this.size[i] = this.bsize[i] * (0.4 + 0.6 * k);
+      if (this.dark) {
+        // smoke keeps its colour, thins out and spreads
+        this.col[j] = this.base[j]; this.col[j + 1] = this.base[j + 1]; this.col[j + 2] = this.base[j + 2];
+        this.alpha[i] = k * (2 - k) * 0.6;
+        this.size[i] = this.bsize[i] * (0.5 + 1.1 * (1 - k));
+      } else {
+        this.col[j] = this.base[j] * k; this.col[j + 1] = this.base[j + 1] * k; this.col[j + 2] = this.base[j + 2] * k;
+        this.size[i] = this.bsize[i] * (0.4 + 0.6 * k);
+      }
     }
     const g = this.points.geometry;
     g.attributes.position.needsUpdate = true;
     g.attributes.aColor.needsUpdate = true;
     g.attributes.aSize.needsUpdate = true;
+    g.attributes.aAlpha.needsUpdate = true;
   }
 }

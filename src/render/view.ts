@@ -59,6 +59,14 @@ export class View {
   private ship: ShipVisual;
   private pivot = new THREE.Group();
   private particles = new Particles();
+  /** Dark exhaust: violet soot drawn under the glowing sparks. */
+  private smoke = new Particles(true, 500);
+  private smokeAcc = 0;
+  // linear values: on screen these are near-black indigo to dark plum (0.16 linear would already be a mid purple)
+  private sootA = new THREE.Color(0.012, 0.0, 0.03);
+  private sootB = new THREE.Color(0.06, 0.002, 0.07);
+  private sootC = new THREE.Color();
+  private ember = new THREE.Color(0.2, 0.02, 0.42);
   private waves = new Shockwaves();
   private ribbons: Ribbon[] = [];
   private marker: THREE.Mesh;
@@ -105,7 +113,9 @@ export class View {
     this.ship.root.traverse((o) => { if (!(o instanceof THREE.Sprite) && !o.userData.glow) o.layers.enable(CRISP); });
     this.c.trail.copy(this.ship.trail);
     this.c.exhaust.copy(this.ship.exhaust);
-    this.scene.add(this.pivot, this.particles.points, this.waves.group);
+    // soot is drawn after bloom, with the crisp ship: glow added on top would wash dark puffs out to a pale haze
+    this.smoke.points.layers.set(CRISP);
+    this.scene.add(this.pivot, this.smoke.points, this.particles.points, this.waves.group);
     for (let i = 0; i < 2; i++) {
       const r = new Ribbon(new THREE.Color());
       this.ribbons.push(r);
@@ -138,6 +148,7 @@ export class View {
   resetRun(): void {
     this.track?.resetGems();
     this.particles.clear();
+    this.smoke.clear();
     this.waves.clear();
     for (const r of this.ribbons) r.reset();
     this.shake = 0; this.squash = 0; this.kick = 0; this.roll = 0; this.camX = 0; this.camY = 0;
@@ -327,6 +338,28 @@ export class View {
     }
     this.exhaust -= Math.floor(this.exhaust);
 
+    // dark violet soot behind the engines, so the jets read against the bright road. Short-lived, and it fades
+    // out before it reaches the camera.
+    this.smokeAcc += dt * (p.boosting ? 100 : 65) * (1 + 0.4 * beat);
+    if (p.alive && !menu) {
+      for (let n = Math.floor(this.smokeAcc); n > 0; n--) {
+        const t = ship.thrusters[n % ship.thrusters.length];
+        const w = this.tmp.copy(t).applyMatrix4(this.pivot.matrixWorld);
+        this.sootC.copy(this.sootA).lerp(this.sootB, Math.random());
+        // rolls back and down along the jets, spreading a little to the sides
+        const side = (n % 2 ? 1 : -1) * (Math.random() < 0.7 ? 1 : -1);
+        // falls behind at about half the ship's speed: 1 to 5 m back, where the chase camera sees it below the ship
+        this.smoke.spawn(w.x + side * 0.1, w.y - 0.1, w.z + 0.9,
+          side * (0.3 + Math.random() * 0.9), -0.9 + Math.random() * 0.8, -p.speed * 0.55 + Math.random() * 3,
+          0.35 + Math.random() * 0.25, 0.32 + Math.random() * 0.3, this.sootC, 1.2);
+        // and a deep violet ember: darker than the sparks, but it glows, so it also shows on a dark road
+        if (Math.random() < 0.3) this.particles.spawn(w.x, w.y, w.z + 0.2,
+          side * (0.5 + Math.random() * 2), Math.random() * 1.5, -p.speed * 0.5 + Math.random() * 3,
+          0.35 + Math.random() * 0.3, 0.12 + Math.random() * 0.08, this.ember, 1.5);
+      }
+    }
+    this.smokeAcc -= Math.floor(this.smokeAcc);
+
     // speed streaks past the road once the run heats up
     if (!menu && p.alive && hv > 0.05) {
       this.dots += dt * (35 * hv + 45 * rv);
@@ -384,6 +417,7 @@ export class View {
     track.update(dt, time, beat, p.z, hv, rv, p.t, fv);
     bg.update(dt, time, beat, cam.position, hv, rv, fv);
     this.particles.update(dt);
+    this.smoke.update(dt);
     this.waves.update(dt);
 
     this.flash *= Math.exp(-dt * 5.5);
@@ -418,6 +452,7 @@ export class View {
     this.camera.updateProjectionMatrix();
     const px = (h * pr) / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2));
     this.particles.setScale(px);
+    this.smoke.setScale(px);
     this.bg?.setScale(px);
   }
 }
