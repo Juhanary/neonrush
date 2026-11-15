@@ -1,6 +1,7 @@
 import type { SimEvent } from '../core/sim';
 import { BeatClock } from './clock';
 import { Mix, Voices, mtof } from './engine';
+import { songByName } from './generate';
 import { SONGS, chordRoot, noteOf, playStep, type Song } from './songs';
 
 export interface SongOptions {
@@ -59,7 +60,7 @@ export class GameAudio {
   /** Name of the song that is playing, or '' when the music is stopped. */
   get current(): string { return this.playing ? this.songName : ''; }
   /** Tempo of a free-running song (the menu theme). */
-  bpmOf(name: string): number { return SONGS[name]?.bpm ?? 120; }
+  bpmOf(name: string): number { return songByName(name)?.bpm ?? 120; }
 
   setMuted(m: boolean): void {
     this.muted = m;
@@ -72,7 +73,7 @@ export class GameAudio {
   /** Choose the song and where in it to begin. Nothing sounds until `sync` is called. */
   playSong(name: string, opt: SongOptions = {}): void {
     this.hype = 0;
-    this.song = SONGS[name] ?? SONGS.menu;
+    this.song = songByName(name) ?? SONGS.menu;
     this.songName = name;
     const own = this.song.energy?.replace(/\s/g, '');
     const loop = this.song.loop ?? 16;
@@ -250,7 +251,7 @@ export class GameAudio {
     const v = new Voices(mix);
     mix.music.gain.value = 0.8;
     mix.setStep(sd);
-    const song = SONGS[name];
+    const song = songByName(name) ?? SONGS.menu;
     for (let step = 0; step < bars * 16; step++) playStep(v, song, { step, t: 0.05 + step * sd, sd, energy, next: energy, hype: 0 });
     const buf = await ctx.startRendering();
     const L = buf.getChannelData(0), R = buf.getChannelData(1);

@@ -69,7 +69,7 @@ function build(items: (Rows | Hint | Flip)[]): Pick<LevelDef, 'rows' | 'hints' |
 
 /** World 1 — single ideas introduced one at a time, with tutorial callouts. */
 const cyanDrift: LevelDef = {
-  id: 'cyan-drift', name: 'CYAN DRIFT', world: 0, speed: 24, song: 'cyan',
+  id: 'cyan-drift', name: 'CYAN DRIFT', world: 0, speed: 24, song: 'drift',
   ...build([
     h('collect', -4),
     bar(run(), run(), on('==o=='), on('==o==')),
@@ -106,7 +106,7 @@ const cyanDrift: LevelDef = {
 
 /** World 2 — staircases, island hops and a skyway on top of the blocks. */
 const solarFlare: LevelDef = {
-  id: 'solar-flare', name: 'SOLAR FLARE', world: 1, speed: 26, song: 'solar',
+  id: 'solar-flare', name: 'SOLAR FLARE', world: 1, speed: 26, song: 'flare',
   ...build([
     bar(run(), run(), on('=o=o='), hop()),
     bar(run(), on('==o=='), run(), hop()),
@@ -129,7 +129,7 @@ const solarFlare: LevelDef = {
 
 /** World 3 — fast slalom, three-lane side jumps, block-top hops and single-lane islands. */
 const toxicPulse: LevelDef = {
-  id: 'toxic-pulse', name: 'TOXIC PULSE', world: 2, speed: 28, song: 'toxic',
+  id: 'toxic-pulse', name: 'TOXIC PULSE', world: 2, speed: 28, song: 'pulse',
   ...build([
     bar(run(), run(), on('=o=o='), hop()),
     bar(run(), leap(), run()),
@@ -152,7 +152,7 @@ const toxicPulse: LevelDef = {
 
 /** World 4 — ice with almost no grip and roads that sway to the music. */
 const frostLine: LevelDef = {
-  id: 'frost-line', name: 'FROST LINE', world: 3, speed: 29, song: 'frost',
+  id: 'frost-line', name: 'FROST LINE', world: 3, speed: 29, song: 'line',
   ...build([
     bar(run(), run(), on('=o=o='), hop()),
     bar(run(), leap(), run()),
@@ -177,7 +177,7 @@ const frostLine: LevelDef = {
 
 /** World 5 — rails to switch between, and a slow-motion stretch where gravity turns upside down. */
 const gravityWell: LevelDef = {
-  id: 'gravity-well', name: 'GRAVITY WELL', world: 4, speed: 30, song: 'gravity',
+  id: 'gravity-well', name: 'GRAVITY WELL', world: 4, speed: 30, song: 'well',
   ...build([
     bar(run(), run(), on('=o=o='), hop()),
     h('rail', -5),
@@ -205,7 +205,7 @@ const gravityWell: LevelDef = {
 
 /** World 6 — boost jumps, a skyway with a hop between block tops, and side jumps at speed. */
 const emberRush: LevelDef = {
-  id: 'ember-rush', name: 'EMBER RUSH', world: 5, speed: 31, song: 'ember',
+  id: 'ember-rush', name: 'EMBER RUSH', world: 5, speed: 31, song: 'rush',
   ...build([
     bar(run(), run(), on('o=o=o'), hop()),
     bar(run(), leap(), run()),
@@ -228,7 +228,7 @@ const emberRush: LevelDef = {
 
 /** World 7 — roads that sway from edge to edge, rail switching and long ice curves. */
 const voltStorm: LevelDef = {
-  id: 'volt-storm', name: 'VOLT STORM', world: 6, speed: 32, song: 'volt',
+  id: 'volt-storm', name: 'VOLT STORM', world: 6, speed: 32, song: 'storm',
   ...build([
     bar(run(), run(), on('=o=o='), hop()),
     bar(run(), leap(), run()),
@@ -251,7 +251,7 @@ const voltStorm: LevelDef = {
 
 /** World 8 — the finale: everything so far and two gravity-flip zones, the second one over open space. */
 const zeroPoint: LevelDef = {
-  id: 'zero-point', name: 'ZERO POINT', world: 7, speed: 33, song: 'zero',
+  id: 'zero-point', name: 'ZERO POINT', world: 7, speed: 33, song: 'point',
   ...build([
     bar(run(), run(), on('=o=o='), hop()),
     bar(run(), leap(), run()),
@@ -278,7 +278,7 @@ const zeroPoint: LevelDef = {
 
 /** World 9 — built after the concept art: spike rows, crate slaloms, a crate skyway, side jumps at 34 m/s. */
 const neonHorizon: LevelDef = {
-  id: 'neon-horizon', name: 'NEON HORIZON', world: 8, speed: 34, song: 'horizon',
+  id: 'neon-horizon', name: 'NEON HORIZON', world: 8, speed: 34, song: 'neon',
   energy: '2233 2233 2333 3333',
   ...build([
     h('spikes', 3),

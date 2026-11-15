@@ -11,8 +11,8 @@
  */
 export const mtof = (m: number): number => 440 * Math.pow(2, (m - 69) / 12);
 
-export type BassKind = 'sub' | 'pluck' | 'reese' | 'acid' | 'wobble';
-export type LeadKind = 'square' | 'saw' | 'bell' | 'tri';
+export type BassKind = 'sub' | 'pluck' | 'reese' | 'acid' | 'wobble' | 'grit' | 'fm' | 'growl';
+export type LeadKind = 'square' | 'saw' | 'bell' | 'tri' | 'grit' | 'fm' | 'hollow';
 
 export class Mix {
   readonly master: GainNode;
@@ -103,6 +103,7 @@ export class Mix {
 export class Voices {
   private ctx: BaseAudioContext;
   private flip = 1;
+  private curves = new Map<number, Float32Array<ArrayBuffer>>();
   constructor(readonly mix: Mix) { this.ctx = mix.ctx; }
 
   // ---- building blocks ----------------------------------------------------
@@ -147,6 +148,20 @@ export class Voices {
     s.start(t, Math.random() * 0.6); s.stop(t + dur + 0.03);
     return g;
   }
+  /** Soft-clipping distortion. The output never exceeds 1, so the level after it is set by the amp alone. */
+  private drive(amount: number): WaveShaperNode {
+    let c = this.curves.get(amount);
+    if (!c) {
+      c = new Float32Array(1025);
+      const norm = Math.tanh(amount);
+      for (let i = 0; i < c.length; i++) c[i] = Math.tanh(amount * (i / 512 - 1)) / norm;
+      this.curves.set(amount, c);
+    }
+    const w = this.ctx.createWaveShaper();
+    w.curve = c;
+    w.oversample = '2x';
+    return w;
+  }
   private pan(node: AudioNode, p: number, to: AudioNode): void {
     const c = this.ctx as BaseAudioContext & { createStereoPanner?: () => StereoPannerNode };
     if (p !== 0 && c.createStereoPanner) {
@@ -164,11 +179,19 @@ export class Voices {
 
   // ---- drums --------------------------------------------------------------
   /** Kick. Also ducks every pitched instrument for a moment, which is what makes the mix pump. */
-  kick(t: number, v = 1, duck = 0.2): void {
-    const o = this.osc('sine', 170, t, t + 0.4);
-    o.frequency.exponentialRampToValueAtTime(46, t + 0.11);
+  kick(t: number, v = 1, duck = 0.2, hard = false): void {
+    const o = this.osc('sine', hard ? 210 : 170, t, t + 0.4);
+    o.frequency.exponentialRampToValueAtTime(hard ? 43 : 46, t + (hard ? 0.09 : 0.11));
     const g = this.amp(t, v, 0.002, 0.3, 0.001, 0.02, 0.3);
-    o.connect(g).connect(this.mix.drums);
+    if (hard) {
+      // saturated: the sine is pushed into the clipper, which squares it off and adds a knock
+      const pre = this.ctx.createGain();
+      pre.gain.value = 2.6;
+      const post = this.ctx.createGain();
+      post.gain.value = 0.8;
+      o.connect(pre).connect(this.drive(2.5)).connect(g).connect(post).connect(this.mix.drums);
+      this.burst(t, 0.03, v * 0.2, 'bandpass', 3200, 0.8).connect(this.mix.drums);
+    } else o.connect(g).connect(this.mix.drums);
     const c = this.osc('triangle', 1100, t, t + 0.05);
     c.frequency.exponentialRampToValueAtTime(180, t + 0.025);
     c.connect(this.amp(t, v * 0.32, 0.001, 0.03, 0.001, 0.005, 0.02)).connect(this.mix.drums);
@@ -177,10 +200,19 @@ export class Voices {
     d.setValueAtTime(0.3, t);
     d.linearRampToValueAtTime(1, t + duck);
   }
-  snare(t: number, v = 1): void {
-    const n = this.burst(t, 0.19, v * 0.5, 'bandpass', 2300, 0.6);
+  snare(t: number, v = 1, hard = false): void {
+    const n = this.burst(t, hard ? 0.26 : 0.19, v * 0.5, 'bandpass', hard ? 1900 : 2300, 0.6);
     n.connect(this.mix.drums);
-    this.send(n, this.mix.rev, 0.3);
+    this.send(n, this.mix.rev, hard ? 0.55 : 0.3);
+    if (hard) {
+      // a metallic ring under the noise: two squares a non-harmonic interval apart
+      const ring = this.amp(t, v * 0.09, 0.001, 0.07, 0.001, 0.01, 0.05);
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 1.2;
+      this.osc('square', 331, t, t + 0.12).connect(bp);
+      this.osc('square', 487, t, t + 0.12).connect(bp);
+      bp.connect(ring).connect(this.mix.drums);
+    }
     const o = this.osc('triangle', 215, t, t + 0.14);
     o.frequency.exponentialRampToValueAtTime(150, t + 0.09);
     o.connect(this.amp(t, v * 0.38, 0.001, 0.1, 0.001, 0.01, 0.06)).connect(this.mix.drums);
@@ -196,7 +228,16 @@ export class Voices {
     this.flip = -this.flip;
     this.pan(this.burst(t, open ? 0.24 : 0.045, v * 0.3, 'highpass', open ? 7000 : 8500), this.flip * 0.25, this.mix.drums);
   }
-  perc(t: number, v = 1, freq = 520): void {
+  perc(t: number, v = 1, freq = 520, hard = false): void {
+    if (hard) {
+      // struck metal instead of a tom
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = freq * 4.2; bp.Q.value = 3;
+      this.osc('square', freq * 1.5, t, t + 0.1).connect(bp);
+      this.osc('square', freq * 2.23, t, t + 0.1).connect(bp);
+      this.pan(bp.connect(this.amp(t, v * 0.2, 0.001, 0.05, 0.001, 0.006, 0.04)), -this.flip * 0.4, this.mix.drums);
+      return;
+    }
     const o = this.osc('sine', freq, t, t + 0.12);
     o.frequency.exponentialRampToValueAtTime(freq * 0.55, t + 0.08);
     this.pan(o.connect(this.amp(t, v * 0.3, 0.001, 0.08, 0.001, 0.01, 0.04)), -this.flip * 0.4, this.mix.drums);
@@ -247,6 +288,38 @@ export class Voices {
       this.osc('sawtooth', f0, t, end).connect(f);
       f.connect(this.amp(t, 0.24 + 0.16 * v, 0.004, 0.1, 0.5, dur, 0.04)).connect(out);
       this.osc('sine', f0, t, end).connect(this.amp(t, 0.32, 0.004, 0.1, 0.6, dur, 0.04)).connect(out);
+    } else if (kind === 'grit') {
+      // distorted saw: the filter envelope opens into the clipper, a clean sine carries the low end
+      const f = this.lp(t, 320 + 1900 * v, 360, Math.min(0.22, dur + 0.05), 4);
+      this.osc('sawtooth', f0, t, end).connect(f);
+      this.osc('square', f0, t, end, 7).connect(f);
+      const pre = this.ctx.createGain();
+      pre.gain.value = 1.6;
+      f.connect(pre).connect(this.drive(3)).connect(this.amp(t, v * 0.2, 0.003, 0.12, 0.55, dur, 0.04)).connect(out);
+      this.osc('sine', f0, t, end).connect(this.amp(t, v * 0.33, 0.004, 0.1, 0.7, dur, 0.05)).connect(out);
+    } else if (kind === 'fm') {
+      // metallic FM bass: the modulation index falls quickly, so every note barks and then hums
+      const car = this.osc('sine', f0, t, end);
+      const mod = this.osc('sine', f0 * 2, t, end);
+      const idx = this.ctx.createGain();
+      idx.gain.setValueAtTime(f0 * 4.5, t);
+      idx.gain.exponentialRampToValueAtTime(f0 * 0.5, t + 0.16);
+      mod.connect(idx).connect(car.frequency);
+      car.connect(this.lp(t, 2600, 2600, 0.1, 0.7)).connect(this.amp(t, v * 0.3, 0.003, 0.12, 0.6, dur, 0.05)).connect(out);
+      this.osc('sine', f0, t, end).connect(this.amp(t, v * 0.3, 0.004, 0.1, 0.7, dur, 0.05)).connect(out);
+    } else if (kind === 'growl') {
+      // detuned saws through a moving filter into the clipper: a reese that snarls
+      const f = this.lp(t, 620, 620, 0.1, 5);
+      const lfo = this.osc('sine', rateHz * 2, t, end);
+      const depth = this.ctx.createGain();
+      depth.gain.value = 380;
+      lfo.connect(depth).connect(f.frequency);
+      for (const c of [-22, 22]) this.osc('sawtooth', f0, t, end, c).connect(f);
+      this.osc('square', f0 * 2, t, end, 5).connect(f);
+      const pre = this.ctx.createGain();
+      pre.gain.value = 1.4;
+      f.connect(pre).connect(this.drive(4)).connect(this.amp(t, v * 0.15, 0.012, 0.1, 0.9, dur, 0.06)).connect(out);
+      this.osc('sine', f0, t, end).connect(this.amp(t, v * 0.36, 0.006, 0.1, 0.8, dur, 0.05)).connect(out);
     } else {
       // wobble: saw + square through a filter swept by an LFO locked to the tempo
       const f = this.lp(t, 620, 620, 0.1, 8);
@@ -303,12 +376,14 @@ export class Voices {
   lead(note: number, t: number, dur: number, v: number, kind: LeadKind, to: AudioNode = this.mix.inst): void {
     const f0 = mtof(note), end = t + dur + 0.6;
     if (kind === 'bell') { this.bell(note, t, v, to); return; }
+    if (kind === 'fm') { this.fmLead(note, t, dur, v, to); return; }
     const vib = this.osc('sine', 5.6, t, end);
     const vd = this.ctx.createGain();
     vd.gain.setValueAtTime(0, t);
     vd.gain.linearRampToValueAtTime(dur > 0.22 ? 9 : 0, t + Math.max(0.2, dur * 0.6));
     vib.connect(vd);
-    const f = this.lp(t, kind === 'tri' ? 5000 : 4400, kind === 'saw' ? 2100 : 2600, 0.25, 1.2);
+    const f = kind === 'grit' ? this.lp(t, 5200, 1700, 0.3, 2) : kind === 'hollow' ? this.lp(t, 3200, 1500, 0.3, 1.5)
+      : this.lp(t, kind === 'tri' ? 5000 : 4400, kind === 'saw' ? 2100 : 2600, 0.25, 1.2);
     const add = (type: OscillatorType, mul: number, cents: number, gain: number) => {
       const o = this.osc(type, f0 * mul, t, end, cents);
       vd.connect(o.detune);
@@ -318,11 +393,36 @@ export class Voices {
     };
     if (kind === 'square') { add('square', 1, 0, 0.5); add('sawtooth', 1, 11, 0.35); add('square', 2, -7, 0.14); }
     else if (kind === 'saw') { add('sawtooth', 1, -13, 0.36); add('sawtooth', 1, 0, 0.4); add('sawtooth', 1, 13, 0.36); add('sawtooth', 2, 5, 0.12); }
+    else if (kind === 'grit') { add('sawtooth', 1, -17, 0.4); add('sawtooth', 1, 0, 0.45); add('sawtooth', 1, 17, 0.4); add('square', 0.5, 0, 0.3); }
+    else if (kind === 'hollow') { add('square', 1, -7, 0.42); add('square', 1, 7, 0.42); add('triangle', 0.5, 0, 0.3); }
     else { add('triangle', 1, 0, 0.9); add('sine', 2, 4, 0.3); add('square', 1, -6, 0.1); }
-    const g = this.amp(t, v * 0.27, 0.008, 0.15, 0.75, dur * 0.92, 0.09);
-    f.connect(g).connect(to);
+    const g = this.amp(t, v * (kind === 'grit' ? 0.16 : kind === 'hollow' ? 0.25 : 0.27), 0.008, 0.15, 0.75, dur * 0.92, 0.09);
+    if (kind === 'grit') {
+      const pre = this.ctx.createGain();
+      pre.gain.value = 1.5;
+      f.connect(pre).connect(this.drive(2.5)).connect(g);
+    } else f.connect(g);
+    g.connect(to);
     this.send(g, this.mix.dly, 0.3);
     this.send(g, this.mix.rev, 0.28);
+  }
+
+  /** Sustained FM lead: bright and digital at the attack, rounder as the index falls. */
+  private fmLead(note: number, t: number, dur: number, v: number, to: AudioNode): void {
+    const f0 = mtof(note), end = t + dur + 0.4;
+    const g = this.amp(t, v * 0.2, 0.006, 0.15, 0.7, dur * 0.92, 0.1);
+    for (const cents of [-6, 6]) {
+      const car = this.osc('sine', f0, t, end, cents);
+      const mod = this.osc('sine', f0 * 2, t, end, cents);
+      const idx = this.ctx.createGain();
+      idx.gain.setValueAtTime(f0 * 3.2, t);
+      idx.gain.exponentialRampToValueAtTime(f0 * 0.9, t + 0.28);
+      mod.connect(idx).connect(car.frequency);
+      this.pan(car, cents < 0 ? -0.3 : 0.3, g);
+    }
+    g.connect(to);
+    this.send(g, this.mix.dly, 0.3);
+    this.send(g, this.mix.rev, 0.25);
   }
 
   /** Glassy FM bell. */

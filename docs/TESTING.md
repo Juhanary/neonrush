@@ -21,6 +21,7 @@ Run these in order after any change to `src/core`, a track or a song. Stop at th
 - **Flip zones**: no tapping loses the ship in 0.8 to 1.4 s; holding does not help; tapping exactly once per beat holds altitude through the whole zone; a calm rhythm under two taps a second gets through; gravity returns.
 - **Practice checkpoints**: enough of them, never more than 34 rows apart, none kills at once, and from each one the bot gets past the checkpoint after next.
 - **Beat clock**: exact, ordered scheduling through jitter, slow frames, speed changes and restarts.
+- **Songs**: every built-in song is well formed and every track names an existing song of its own; the generator is deterministic and keeps to the hook rules for 300 seeds in each mood.
 - **Sim**: determinism and basic jump distance.
 
 ## Reading a failure
