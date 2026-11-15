@@ -28,11 +28,11 @@ npm run audio:check  # offline render of every song: clipping and balance (needs
 | --- | --- |
 | `src/core` | Gameplay simulation, tuning and level data. No engine, DOM or audio imports. |
 | `src/render` | Three.js presentation: track, ship, particles, background, camera, bloom. |
-| `src/audio` | Synthesised music and effects (WebAudio). |
+| `src/audio` | Synthesised music and effects (WebAudio). Songs are data (`songs.ts`); `generate.ts` writes new ones from a seed. |
 | `src/game` | Fixed-step loop, input, save data. |
 | `src/ui` | DOM HUD and menus. |
 | `src/editor` | The level editor screen. |
-| `tests` | Vitest: determinism, jump distance, level completability at two reaction speeds, jump pads, flip zones, practice checkpoints. |
+| `tests` | Vitest: determinism, jump distance, level completability at two reaction speeds, jump pads, flip zones, practice checkpoints, song notation and the song generator, music analysis, the level editor core. |
 | `scripts` | Headless Chrome smoke tests and screenshots. |
 
 See `docs/ARCHITECTURE.md` for the design rules and the notes on a later Godot port, `docs/LEVELS.md` for building tracks on the beat grid, `docs/MUSIC.md` for writing songs that match them, `docs/EDITOR.md` for the level editor and the music analysis, and `docs/TESTING.md` for the test routine.

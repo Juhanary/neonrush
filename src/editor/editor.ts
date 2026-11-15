@@ -1,9 +1,11 @@
 import './editor.css';
 import { analyse, envelopes, gridFeatures, mixDown, regrid, type Envelopes } from '../audio/analyze';
 import type { GameAudio } from '../audio/audio';
+import { MOODS, describeSong, genName, songByName, type Mood } from '../audio/generate';
+import { checkSong } from '../audio/lint';
 import { SONGS } from '../audio/songs';
 import { CHECK_STALL, autoBuild } from '../core/auto';
-import { BAR_ROWS, CFG } from '../core/config';
+import { BAR_ROWS, BEAT_LEN, CFG } from '../core/config';
 import {
   MAX_BARS, MAX_BPM, MAX_SPEED, MIN_BARS, MIN_BPM, MIN_SPEED, barsOf, blankLevel, musicBars, musicEnergy, musicStart, toDef, type CustomLevel,
 } from '../core/custom';
@@ -57,6 +59,8 @@ const TILES: [string, string][] = [
   ['=', 'floor'], ['.', 'gap'], ['#', 'block'], ['x', 'spike'], ['o', 'gem'], ['O', 'gemHigh'], ['*', 'gemAir'], ['+', 'gemPad'],
   ['^', 'pad'], ['>', 'boost'], ['i', 'ice'], ['m', 'move'], ['|', 'rail'],
 ];
+/** Intensity per bar while a song is auditioned in the editor: every layer of the arrangement within eight bars. */
+const AUDITION = '11223333';
 /** Intensity per bar for the automatic fill of a track without a music file: build-up in four-bar phrases. */
 const ARC = '1222223322333332';
 
@@ -93,6 +97,9 @@ export class Editor {
   private env?: Envelopes;
   private musicNote = '';
   private deleteArmed = false;
+  /** Animation frame of a song being auditioned (0 = none), and when it started. */
+  private audition = 0;
+  private auditionT0 = 0;
 
   constructor(private host: EditorHost) {
     $('edBack').addEventListener('click', () => this.close());
@@ -127,8 +134,10 @@ export class Editor {
       else if (d.half && this.lv.music) this.shiftStart(0, 30 / this.lv.music.bpm);
       else if (d.bars) this.setBars(barsOf(this.lv) + +d.bars);
       else if (d.world) { this.lv.world = +d.world; this.persist(); this.theme(); this.refreshPanel(); }
-      else if (d.song) { this.lv.song = d.song; this.persist(); this.refreshPanel(); }
+      else if (d.song) { this.lv.song = d.song; this.persist(); this.playSong(); }
+      else if (d.mood) this.generate(d.mood as Mood);
     });
+    $('edSongPlay').addEventListener('click', () => { if (this.audition) this.stopSong(); else this.playSong(); });
     $('edListen').addEventListener('click', () => this.listen());
     $('edFit').addEventListener('click', () => { if (this.lv.music) this.setBars(musicBars(this.lv.music)); });
     $('edNoMusic').addEventListener('click', () => this.removeMusic());
@@ -184,6 +193,7 @@ export class Editor {
   }
 
   private close(): void {
+    this.stopSong();
     this.host.audio.stopPreview();
     this.reportChange();
     this.root.hidden = true;
@@ -377,6 +387,7 @@ export class Editor {
 
   private test(): void {
     if (this.busy) return;
+    this.stopSong();
     this.host.audio.stopPreview();
     this.persist();
     this.reportChange();
@@ -397,6 +408,7 @@ export class Editor {
 
   private async addMusic(file: File): Promise<void> {
     const id = this.lv.id;
+    this.stopSong();
     this.host.audio.stopPreview();
     this.musicNote = this.t('ed.analysing');
     this.refreshPanel();
@@ -488,6 +500,7 @@ export class Editor {
 
   private listen(): void {
     const a = this.host.audio, m = this.lv.music;
+    this.stopSong();
     if (a.previewing) a.stopPreview();
     else if (m && this.buf) {
       a.unlock();
@@ -497,8 +510,57 @@ export class Editor {
     this.refreshPanel();
   }
 
+  /**
+   * "New song": the generator (audio/generate.ts) writes a song from a random seed in the chosen mood. The
+   * track stores only its name, `gen:<seed>:<mood>`; the same name always gives the same song.
+   */
+  private generate(mood: Mood): void {
+    let name = '';
+    for (let tries = 0; tries < 8; tries++) {
+      name = genName(10000 + Math.floor(Math.random() * 90000), mood);
+      const song = songByName(name);
+      if (song && !checkSong(song).length) break;
+    }
+    this.lv.song = name;
+    this.persist();
+    this.playSong();
+  }
+
+  /**
+   * Audition the track's song at the track's tempo. In the game the music follows the ship; here a clock
+   * stands in for the ship, and the bars step through every intensity so the whole arrangement is heard.
+   */
+  private playSong(): void {
+    const a = this.host.audio;
+    this.stopSong();
+    a.unlock();
+    a.stopPreview();
+    a.resume();
+    const bps = this.lv.speed / BEAT_LEN;
+    const bars = AUDITION.length;
+    a.playSong(this.lv.song, { energy: (bar) => +AUDITION[Math.max(0, Math.min(bars - 1, bar))] });
+    this.auditionT0 = performance.now();
+    const tick = (): void => {
+      const beat = ((performance.now() - this.auditionT0) / 1000) * bps;
+      if (beat >= bars * CFG.beatsPerBar || this.root.hidden) { this.stopSong(); return; }
+      a.sync(beat, bps);
+      this.audition = requestAnimationFrame(tick);
+    };
+    this.audition = requestAnimationFrame(tick);
+    this.refreshPanel();
+  }
+
+  private stopSong(): void {
+    if (!this.audition) return;
+    cancelAnimationFrame(this.audition);
+    this.audition = 0;
+    this.host.audio.stopMusic();
+    this.refreshPanel();
+  }
+
   private remove(): void {
     if (!this.deleteArmed) { this.deleteArmed = true; this.refreshPanel(); return; }
+    this.stopSong();
     this.host.audio.stopPreview();
     this.host.store.remove(this.lv.id);
     this.host.tracks.set(this.lv.id, undefined);
@@ -512,7 +574,7 @@ export class Editor {
     $('edPanel').hidden = !show;
     this.deleteArmed = false;
     if (show) this.refreshPanel();
-    else this.host.audio.stopPreview();
+    else { this.stopSong(); this.host.audio.stopPreview(); }
   }
 
   private refreshPanel(): void {
@@ -534,8 +596,15 @@ export class Editor {
       $('edListen').classList.toggle('off', !this.buf);
       $('edMusicCtl').querySelectorAll<HTMLElement>('[data-bpm]').forEach((b) => b.classList.toggle('off', !this.buf));
     }
+    // built-in songs by name; a generated one shows as its own chip
+    const gen = /^gen:([^:]+)(?::(\w+))?$/.exec(lv.song);
     $('edSongs').innerHTML = Object.keys(SONGS).filter((s) => s !== 'menu')
-      .map((s) => `<button data-song="${s}" class="${s === lv.song ? 'on' : ''}">${s.toUpperCase()}</button>`).join('');
+      .map((s) => `<button data-song="${s}" class="${s === lv.song ? 'on' : ''}">${s.toUpperCase()}</button>`).join('')
+      + (gen ? `<button data-song="${lv.song}" class="on">\u2726 ${gen[1]}</button>` : '');
+    $('edMoods').innerHTML = MOODS.map((mood) => `<button data-mood="${mood}" class="${gen?.[2] === mood ? 'on' : ''}">\u2726 ${this.t('ed.mood.' + mood)}</button>`).join('');
+    const song = songByName(lv.song);
+    $('edSongInfo').textContent = song ? `${gen ? `\u2726 ${gen[2] ? this.t('ed.mood.' + gen[2]) + ' ' : ''}${gen[1]}` : lv.song.toUpperCase()} \u00B7 ${describeSong(song)}. ${this.t('ed.genNote')}` : this.t('ed.genNote');
+    $('edSongPlay').textContent = this.t(this.audition ? 'ed.songStop' : 'ed.songPlay');
     $('edSongLabel').textContent = this.t(m ? 'ed.songBackup' : 'ed.song');
     const sp = $<HTMLInputElement>('edSpeed');
     sp.min = String(MIN_SPEED); sp.max = String(MAX_SPEED); sp.value = String(Math.round(lv.speed));

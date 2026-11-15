@@ -13,6 +13,8 @@ import type { BassKind, LeadKind, Voices } from './engine';
  *           In `lead` the degrees count from the key note; in `bass` and `arp` from the root of the
  *           current chord (so 1 3 5 are always chord tones and 8 / a is the octave).
  *   chords  one digit per bar: the scale degree the chord is built on (diatonic triad).
+ *
+ * `checkSong` (lint.ts) verifies all of this; `generateSong` (generate.ts) writes songs in the same format.
  */
 export interface Kit { kick: string; snare: string; clap: string; hat: string; open: string; perc: string }
 
@@ -26,9 +28,12 @@ export interface Song {
   bass: { kind: BassKind; oct: number; pat: [string, string, string] };
   arp: { oct: number; pat: string; bright: number; from: number };
   pad: { oct: number; from: number; seventh?: boolean };
-  lead: { kind: LeadKind; oct: number; A: string[]; B: string[] };
+  /** A = the hook, B = the answer, C = an optional third phrase (a breakdown) for tracks longer than 16 bars. */
+  lead: { kind: LeadKind; oct: number; A: string[]; B: string[]; C?: string[] };
   /** Which lead phrase each four-bar phrase plays ('-' = none). Loops. */
   form: string;
+  /** 'hard' = saturated kick, ringing snare and metal percussion (the industrial sets). */
+  drums?: 'hard';
   /** Chord-hit rhythm at energy 3. */
   stab?: string;
   /** Tempo for songs that are not tied to a track (the menu). */
@@ -40,6 +45,8 @@ export interface Song {
 }
 
 export const MINOR = [0, 2, 3, 5, 7, 8, 10], MAJOR = [0, 2, 4, 5, 7, 9, 11], PHRYGIAN = [0, 1, 3, 5, 7, 8, 10], DORIAN = [0, 2, 3, 5, 7, 9, 10];
+/** Harmonic minor: the raised seventh makes chord 5 major. Avoid chords 3 and 7 (augmented, diminished). */
+export const HARMONIC = [0, 2, 3, 5, 7, 8, 11];
 
 const k = (kick: string, snare: string, clap: string, hat: string, open: string, perc = '................'): Kit => ({ kick, snare, clap, hat, open, perc });
 const NONE = '................';
@@ -81,6 +88,40 @@ const DRIVE: [Kit, Kit, Kit] = [
   k('x...x...x...x...', '....X.......X...', '....x.......x...', 'xoxoxoxoxoxoxoxo', '..x...x...x...x.'),
   k('x...x...x..xx...', '....X..o....X.oo', '....x.......x...', 'xxoxxxoxxxoxxxox', '..x...x...x...x.', '.x.....x.x......'),
 ];
+
+/** Industrial techno: no backbeat, the kick and struck metal carry it. */
+const STOMP: [Kit, Kit, Kit] = [
+  k('x...x...x...x...', NONE, NONE, '..x...x...x...x.', NONE, '.......x........'),
+  k('x...x...x...x.x.', NONE, NONE, 'x.xxx.xxx.xxx.xx', '..x...x...x...x.', '...x.....x.....x'),
+  k('x..xx...x..xx.x.', '............X...', '............x...', 'xxxxxxxxxxxxxxxx', '..x...x...x...x.', '.x...x.x.x...x..'),
+];
+/** Broken, stuttering beat. */
+const GLITCH: [Kit, Kit, Kit] = [
+  k('x.....x.........', '........x.......', NONE, 'x..x..x.x..x..x.', NONE),
+  k('x..x..x...x.....', '....x.......x.o.', NONE, 'x.xxo.x.xxo.x.xx', '.......x........', '..x......x...x..'),
+  k('x..x..x..xx...x.', '....X..o....X.oo', '....x.......x...', 'xxoxxxoxxoxxxoxx', '......x.......x.', '.x...x...x.x...x'),
+];
+/** Slow-motion half-time with rolling hats. */
+const SLAM: [Kit, Kit, Kit] = [
+  k('x.........x.....', '........X.......', NONE, 'x...x...x...x...', NONE),
+  k('x.....x...x.....', '........X.......', '........x.......', 'x.x.x.xxx.x.x.x.', NONE, '....x.......x...'),
+  k('x..x..x...x..x..', '........X.....oo', '........x.......', 'x.xxx.xxx.xxxxxx', '....x.......x...', '..x...x..x...x..'),
+];
+/** EBM march: kick on every beat, a snare with a pick-up before it, plain eighth hats. */
+const MARCH: [Kit, Kit, Kit] = [
+  k('x...x...x...x...', NONE, NONE, '....x.......x...', NONE),
+  k('x...x...x...x...', '...oX......oX...', NONE, 'x.x.x.x.x.x.x.x.', NONE, '..x.......x.....'),
+  k('x...x...x.x.x...', '...oX..o...oX.o.', '....x.......x...', 'x.x.x.x.x.x.x.x.', NONE, '..x..x....x..x..'),
+];
+/** Rave: four on the floor, claps, open hats on every off-beat. */
+const RAVE: [Kit, Kit, Kit] = [
+  k('x...x...x...x...', NONE, NONE, '..x...x...x...x.', NONE),
+  k('x...x...x...x...', NONE, '....x.......x...', 'xoxoxoxoxoxoxoxo', '..x...x...x...x.'),
+  k('x...x...x...x.xx', '.......o.....ooo', '....x.......x...', 'xxxxxxxxxxxxxxxx', '..x...x...x...x.', '...x.....x......'),
+];
+
+/** Every drum kit by name (the song generator and the editor pick from these). */
+export const KITS: Record<string, [Kit, Kit, Kit]> = { FOUR, BREAK, HALF, DNB, WAVE, DRIVE, STOMP, GLITCH, SLAM, MARCH, RAVE };
 
 export const SONGS: Record<string, Song> = {
   /** Menu theme: F#m D A E, a sung-style hook that repeats its first bar three times. */
@@ -213,10 +254,141 @@ export const SONGS: Record<string, Song> = {
     },
     form: 'AABA', stab: 'x.....x...x.....',
   },
+  // ---- THE NIGHT SET ----------------------------------------------------------------------------
+  // One song per world in a dark industrial / cyberpunk style: distorted basses, saturated drums,
+  // short menacing riffs. Each has a third phrase (C) and an eight-phrase form, so a track longer
+  // than 16 bars does not simply repeat. The older set above stays available by name.
+
+  /** World 1, 120 BPM: C# minor night drive. A falling 3-3-2 figure on a hollow lead over a gritty bass. */
+  drift: {
+    key: 61, scale: MINOR, chords: '1643', kit: WAVE, drums: 'hard',
+    bass: { kind: 'grit', oct: -2, pat: ['1-------1---1...', '1..1..1.1..1..1.', '11.1.11.11.1.18.'] },
+    arp: { oct: 1, pat: '..8..5..8..5..3.', bright: 2600, from: 2 },
+    pad: { oct: -1, from: 1, seventh: true },
+    lead: {
+      kind: 'hollow', oct: 0,
+      A: ['5..3..1.5...3.2.', '6..3..1.6...3.2.', '6..4..1.6...4.3.', '3-----5-7---5-2-'],
+      B: ['c-----b-a---5---', 'c-----a-6---a---', 'd-----c-a---6---', '7---5---3---5-7-'],
+      C: ['1...5...a...7.5.', '1...6...a...c.a.', '4...6...a...d.a.', '3...5...7---b---'],
+    },
+    form: 'AABACABA', stab: '......x.......x.',
+  },
+  /** World 2, 130 BPM: G harmonic minor breakbeat. A stabbing riff that drops to the leading tone, over an FM bass. */
+  flare: {
+    key: 67, scale: HARMONIC, chords: '1465', kit: BREAK, drums: 'hard',
+    bass: { kind: 'fm', oct: -3, pat: ['1.........1.1...', '1.1...1.1.1...18', '1.11..1.1.11..18'] },
+    arp: { oct: 0, pat: '1.3.5.8.5.3.8.5.', bright: 3200, from: 2 },
+    pad: { oct: -1, from: 2 },
+    lead: {
+      kind: 'grit', oct: 0,
+      A: ['1.13..5.3..1..G.', '4.46..a.6..4..3.', '6.6a..c.a..6..5.', '5.7.b.7.5---7---'],
+      B: ['e-----c-a-------', 'd-----c-a---6---', 'c-----a-c---d---', 'b-----a-7-------'],
+      C: ['1..1..1.........', '4..4..4.....3.4.', '6..6..6.........', '5..5..7.b...7...'],
+    },
+    form: 'AABACABA', stab: 'x..x..x.....x...',
+  },
+  /** World 3, 140 BPM: D# phrygian half-time. The flat second leans on every phrase; a growling bass holds the floor. */
+  pulse: {
+    key: 63, scale: PHRYGIAN, chords: '1217', kit: SLAM, drums: 'hard',
+    bass: { kind: 'growl', oct: -2, pat: ['1---------------', '1-------..1-1---', '1-----1-..1-1-2-'] },
+    arp: { oct: 1, pat: '..1...5...8...5.', bright: 2400, from: 2 },
+    pad: { oct: -1, from: 1 },
+    lead: {
+      kind: 'fm', oct: 0,
+      A: ['5.....65....3.1.', '6.....76....4.2.', 'a.....ba....5.3.', 'b---7---4---2---'],
+      B: ['c-------a---b-a-', 'd-------b---c-b-', 'e-------c---d-c-', 'd---b---7-------'],
+      C: ['1.1.....1.1.....', '2.2.....2.2...4.', '1.1.....1.1.....', 'G.G...2.4...G...'],
+    },
+    form: 'AABACABA', stab: '......x.......x.',
+  },
+  /** World 4, 145 BPM: B dorian broken beat. A cold triangle figure with gaps in it over a reese bass. */
+  line: {
+    key: 59, scale: DORIAN, chords: '1473', kit: GLITCH, drums: 'hard',
+    bass: { kind: 'reese', oct: -2, pat: ['1-----------1---', '1-----1-..1-..1-', '1---1-1-..1-1-81'] },
+    arp: { oct: 1, pat: '8.5.3.5.c.5.3.5.', bright: 3600, from: 2 },
+    pad: { oct: 0, from: 1, seventh: true },
+    lead: {
+      kind: 'tri', oct: 1,
+      A: ['5..1..3...5.3...', '6..1..4...6.4...', '7..2..4...7.4...', '5---3---5-3-5-7-'],
+      B: ['a-----7-5-------', 'a-----6-4-------', 'b-----7-4-------', 'c---a---7---5---'],
+      C: ['5.5.5...3.......', '6.6.6...4.......', '7.7.7...4.......', '5.5.5...7...a...'],
+    },
+    form: 'AABACABA',
+  },
+  /** World 5, 150 BPM: G# minor industrial techno. A two-bar question and answer on one chord; long notes for the flip zone. */
+  well: {
+    key: 68, scale: MINOR, chords: '1167', kit: STOMP, drums: 'hard',
+    bass: { kind: 'acid', oct: -3, pat: ['1.....1.1.....1.', '1.1.81.1.1.83.1.', '1.1181.151.183.1'] },
+    arp: { oct: 1, pat: '..8.5...8.5...3.', bright: 2400, from: 2 },
+    pad: { oct: -1, from: 2 },
+    lead: {
+      kind: 'hollow', oct: 0,
+      A: ['1.1..3.1..5..3..', '1.1..3.1..5..7..', '6.6..a.6..c..a..', '7---b---d---b-7-'],
+      B: ['a-----------7---', '5-------3---5---', '6-------a-------', 'b-------d---b---'],
+      C: ['5...5...5...5.7.', '5...5...5...3.1.', '6...6...6...6.a.', '7...7...b...d...'],
+    },
+    form: 'AABACABA', stab: '..x...x...x..x..',
+  },
+  /** World 6, 155 BPM: A# phrygian chase. A galloping riff that falls 3, flat 2, 1 and steps up with the chords. */
+  rush: {
+    key: 58, scale: PHRYGIAN, chords: '1276', kit: DRIVE, drums: 'hard',
+    bass: { kind: 'grit', oct: -2, pat: ['1.1...1.1.1...1.', '1.111.111.111.11', '1111118111111181'] },
+    arp: { oct: 1, pat: '1..5..8.1..5..8.', bright: 3000, from: 3 },
+    pad: { oct: 0, from: 2 },
+    lead: {
+      kind: 'fm', oct: 1,
+      A: ['11.1..5.3.2.1...', '22.2..6.4.3.2...', '44.4..7.6.5.4...', '6---5---3---2---'],
+      B: ['c-----b-a---5---', 'd-----b-6---b---', 'd-----b-7---b---', 'c-----a-c---b---'],
+      C: ['1.....1.1...2.1.', '2.....2.2...3.2.', 'G.....G.G...1.G.', '6...5...3...2...'],
+    },
+    form: 'AABACABA', stab: 'x..x..x.x..x..x.',
+  },
+  /** World 7, 160 BPM: C minor EBM. A stuttered three-note burst that jumps to a chord tone, over an FM bass in octaves. */
+  storm: {
+    key: 60, scale: MINOR, chords: '1746', kit: MARCH, drums: 'hard',
+    bass: { kind: 'fm', oct: -2, pat: ['1...1.1.1...1.1.', '1.1.1.8.1.1.1.8.', '1.81.81.1.81.818'] },
+    arp: { oct: 1, pat: '5.8.5.c.5.8.5.c.', bright: 3800, from: 3 },
+    pad: { oct: 0, from: 1 },
+    lead: {
+      kind: 'square', oct: 0,
+      A: ['aaa...c.aaa...e.', '777...b.777...d.', '666...a.666...d.', 'c---b---a---7-b-'],
+      B: ['e-------c---d-c-', 'd-------b---c-b-', 'f-------d---e-d-', 'c---a---6---b---'],
+      C: ['a.....a.....c.a.', '7.....7.....b.7.', '6.....6.....a.6.', '6..6..a..a..c.b.'],
+    },
+    form: 'AABACABA', stab: 'x.....x..x......',
+  },
+  /** World 8, 165 BPM: F# harmonic minor drum and bass. The hook is long notes (two flip zones); the answer is the busy one, calm again in its last bar. */
+  point: {
+    key: 66, scale: HARMONIC, chords: '1645', kit: DNB, drums: 'hard',
+    bass: { kind: 'growl', oct: -3, pat: ['1-----------1---', '1---1-..1-..1-1-', '1-1-..1-1-..1-81'] },
+    arp: { oct: 1, pat: 'c.8.5.8.c.8.5.3.', bright: 3400, from: 2 },
+    pad: { oct: 0, from: 1 },
+    lead: {
+      kind: 'grit', oct: 0,
+      A: ['5-----a---b-a---', '6-----a---c-a---', '6-----a---d-a---', 'b---7---b---e---'],
+      B: ['a.a.c.a.5...a...', 'a.a.c.a.6...a...', 'a.a.d.a.6...d...', 'b---e---7---5---'],
+      C: ['5-------3-------', '6-------3-------', '6-------4-------', '5---7---b---e---'],
+    },
+    form: 'AABACABA', stab: 'x..x....x..x....',
+  },
+  /** World 9, 170 BPM: A minor rave finale. The chords climb F, G, Am and the riff climbs with them; off-beat rolling bass. */
+  neon: {
+    key: 69, scale: MINOR, chords: '6715', kit: RAVE, drums: 'hard',
+    bass: { kind: 'grit', oct: -3, pat: ['..1...1...1...1.', '..11..11..11..11', '.111.111.111.111'] },
+    arp: { oct: 0, pat: '1.5.8.c.8.5.8.5.', bright: 4200, from: 2 },
+    pad: { oct: -1, from: 1, seventh: true },
+    lead: {
+      kind: 'saw', oct: 0,
+      A: ['3..3..1.3..5..3.', '4..4..2.4..5..4.', '5..5..3.5..7..5.', 'b---7---5---2---'],
+      B: ['a-------6---a---', 'b-----------7---', 'c-----------a---', 'b---7---5---7-b-'],
+      C: ['6.6.6.....3.....', '7.7.7.....4.....', 'a.a.a.....5.....', '7.7.7...b...e...'],
+    },
+    form: 'AABACABA', stab: 'x..x..x..x..x.x.',
+  },
 };
 
 /** Scale steps (0 = first degree) written by a pattern character, or null for rest / hold. */
-function stepOf(ch: string): number | null {
+export function stepOf(ch: string): number | null {
   if (ch >= '1' && ch <= '9') return ch.charCodeAt(0) - 49;
   if (ch >= 'a' && ch <= 'g') return ch.charCodeAt(0) - 97 + 7;
   if (ch >= 'A' && ch <= 'G') return ch.charCodeAt(0) - 65 - 7;
@@ -262,15 +434,16 @@ export function playStep(v: Voices, song: Song, i: StepInfo): void {
   const root = chordRoot(song, bar);
   const phraseEnd = bar % 4 === 3;
   const fill = phraseEnd && s >= 12 && i.next >= e && e >= 2;
+  const hard = song.drums === 'hard';
 
   // ---- drums ---------------------------------------------------------------
-  if (kit.kick[s] !== '.') v.kick(t, vel(kit.kick[s]), Math.min(0.26, sd * 2.2));
-  if (fill) v.snare(t, 0.4 + 0.15 * (s - 12));
-  else if (kit.snare[s] !== '.') v.snare(t, vel(kit.snare[s]));
+  if (kit.kick[s] !== '.') v.kick(t, vel(kit.kick[s]), Math.min(0.26, sd * 2.2), hard);
+  if (fill) v.snare(t, 0.4 + 0.15 * (s - 12), hard);
+  else if (kit.snare[s] !== '.') v.snare(t, vel(kit.snare[s]), hard);
   if (kit.clap[s] !== '.' && !fill) v.clap(t, vel(kit.clap[s]));
   if (kit.open[s] !== '.') v.hat(t, 0.8, true);
   else if (kit.hat[s] !== '.') v.hat(t, vel(kit.hat[s]));
-  if (kit.perc[s] !== '.') v.perc(t, 0.7, s % 8 < 4 ? 520 : 390);
+  if (kit.perc[s] !== '.') v.perc(t, 0.7, s % 8 < 4 ? 520 : 390, hard);
   if (i.hype >= 1 && s % 2 === 1) v.hat(t, 0.3);
   if (s === 0 && bar > 0 && bar % 4 === 0) v.crash(t, e >= 2 ? 0.9 : 0.5);
   if (s === 0 && i.next > e) v.riser(t, sd * 16, 0.6 + 0.2 * i.next);
@@ -302,7 +475,7 @@ export function playStep(v: Voices, song: Song, i: StepInfo): void {
 
   // ---- lead ----------------------------------------------------------------
   const part = song.form[Math.floor(bar / 4) % song.form.length];
-  const phrase = part === 'A' ? song.lead.A : part === 'B' ? song.lead.B : null;
+  const phrase = part === 'A' ? song.lead.A : part === 'B' ? song.lead.B : part === 'C' ? song.lead.C ?? null : null;
   if (phrase) {
     const lp = phrase[bar % 4];
     const ls = stepOf(lp[s]);

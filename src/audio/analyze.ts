@@ -215,18 +215,23 @@ function barShape(e: Float32Array, fps: number, beat: number, phase: number): [n
 
 /**
  * Beat or off-beat? Returns `phase` or `phase + half a beat`, whichever is the better beat.
- *   1. A stream that is the same on every beat of the bar (see barShape) while the other one is not is the
- *      off-beat: hi-hats or an off-beat bass, however loud.
- *   2. Otherwise the beat is where most of the hits are, the bass counting a little extra.
- * Syncopated drums can still fool this, which is why the editor has a half-beat button.
+ *   1. A stream that is the same on every beat of the bar (see barShape) while the other one is not, and
+ *      that has no clear lead in the bass, is the off-beat: hi-hats, however loud.
+ *   2. When both streams hit about equally hard, the one that changes more through the bar is the beat.
+ *   3. Otherwise the beat is where most of the hits are. The bass alone is no guide here: an off-beat
+ *      bass line is common.
+ * Tuned on 32 rendered mixes (tests/fixtures/mixes.json holds a spread of them) and right on 31. The
+ * miss has a steady hi-hat on the beat against an equally steady, louder bass between the beats; such
+ * songs and syncopated drums can fool it, which is why the editor has a half-beat button.
  */
 function settleHalfBeat(e: Float32Array, low: Float32Array, fps: number, beat: number, phase: number): number {
   const alt = phase + beat / 2;
   const [aAll, aU] = barShape(e, fps, beat, phase), [bAll, bU] = barShape(e, fps, beat, alt);
-  if (aU < 0.1 && bU > 2 * aU) return alt;
-  if (bU < 0.1 && aU > 2 * bU) return phase;
   const [aLow] = barShape(low, fps, beat, phase), [bLow] = barShape(low, fps, beat, alt);
-  const lead = Math.log((aAll + 1e-9) / (bAll + 1e-9)) + 0.3 * Math.log((aLow + 1e-9) / (bLow + 1e-9));
+  if (aU < 0.1 && bU > 2 * aU && aLow <= 1.25 * bLow) return alt;
+  if (bU < 0.1 && aU > 2 * bU && bLow <= 1.25 * aLow) return phase;
+  const lead = Math.log((aAll + 1e-9) / (bAll + 1e-9));
+  if (Math.abs(lead) < 0.15) return bU > aU ? alt : phase;
   return lead < 0 ? alt : phase;
 }
 

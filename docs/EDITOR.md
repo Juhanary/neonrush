@@ -8,7 +8,7 @@ Players build their own tracks and drive them to their own music. Entry: `+ NEW 
    - **Figures** are whole beats and always land on a beat: jump, wall, spikes, jump pad, long jump, zigzag, skyway, boost jump and so on. Tap a beat to place one; one-sided figures face the side that was tapped.
    - **Blocks** are single tiles, painted with a finger: floor, gap, block, spikes, the four gems, jump pad, boost, ice, moving road, rail. Painting a tile onto itself wipes it back to floor. `FLIP ZONE` toggles a gravity-flip bar.
    - Two fingers (or the `MOVE` tool, the strip above the lanes, the minimap) scroll. Undo and redo keep 80 steps.
-2. **Music.** `MUSIC` → choose a file. It is analysed and the track takes its tempo: speed = BPM / 5, as everywhere in the game. The strip above the lanes then shows the song beat by beat (height = loudness, colour = intensity of the bar, dot = strong hit). `LISTEN` plays the song with a click on every beat for checking the grid; tempo, start point (by beat or bar), half a beat and ±10 ms can be corrected. Without a file the track uses one of the built-in songs at a chosen speed.
+2. **Music.** `MUSIC` → choose a file. It is analysed and the track takes its tempo: speed = BPM / 5, as everywhere in the game. The strip above the lanes then shows the song beat by beat (height = loudness, colour = intensity of the bar, dot = strong hit). `LISTEN` plays the song with a click on every beat for checking the grid; tempo, start point (by beat or bar), half a beat and ±10 ms can be corrected. Without a file the track plays a game song at a chosen speed: any built-in song, or `NEW SONG` in a mood (chase, night, cold), which has the generator of `docs/MUSIC.md` write one (`genName(seed, mood)`, checked with `checkSong`; the track stores only the name `gen:<seed>:<mood>`). `LISTEN` auditions the song at the track's tempo, stepping through every intensity in eight bars. With a file, the game song is the backup.
 3. **AUTO** fills every bar that is still plain floor with figures that follow the intensity of the music, and lets the rhythm bot prove the result. Built bars are never touched.
 4. **CHECK** lets the bots play: first pressing jump only on the beat, then freely. The result is "can be finished", "passable but a jump is off the beat in bar N", or "stuck in bar N" with the spot marked. Yellow corners are rule hints (`core/rules.ts`), shown while building.
 5. **TEST** drives the track from the checkpoint at the left edge of the view, restarting from checkpoints, recording nothing. Back returns to the editor at the spot.
@@ -26,6 +26,7 @@ Tracks are saved on every change. Editing a track clears its records.
 | Beat rules as hints | `src/core/rules.ts` |
 | Music analysis (no audio API, unit tested) | `src/audio/analyze.ts` |
 | Playing a file tied to the ship, click preview | `src/audio/audio.ts` (`syncTrack`, `preview`) |
+| Game songs for a track: list, generator, validation | `src/audio/generate.ts` (`songByName`, `genName`, `describeSong`), `src/audio/lint.ts` |
 | Storage: tracks in localStorage, files in IndexedDB; decoded-file cache | `src/game/custom-store.ts`, `src/game/tracks.ts` |
 | The editor screen | `src/editor/editor.ts`, `draw.ts`, `editor.css` |
 | Menu cards, test drive, records | `src/game/game.ts` (`playCustom`, `toEditor`), `src/ui/ui.ts` |
@@ -55,6 +56,7 @@ Sound effects still play in the key of the backup song, not of the file: the key
 - The file is stored on the device only. If storage refuses it, it lasts for the session; if it is missing, the backup song plays.
 - A decoded song takes tens of megabytes of memory while it plays.
 - Tracks cannot be shared between devices yet.
+- Pasting a song as JSON (`registerSong`) is not in the editor: a registered song lives only until the page is closed, so the track would need to carry the song itself.
 
 ## Testing
 

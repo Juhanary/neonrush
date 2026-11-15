@@ -23,6 +23,7 @@ After a change to the editor, the analysis or custom tracks also run the three s
 - **Flip zones**: no tapping loses the ship in 0.8 to 1.4 s; holding does not help; tapping exactly once per beat holds altitude through the whole zone; a calm rhythm under two taps a second gets through; gravity returns.
 - **Practice checkpoints**: enough of them, never more than 34 rows apart, none kills at once, and from each one the bot gets past the checkpoint after next.
 - **Beat clock**: exact, ordered scheduling through jitter, slow frames, speed changes and restarts.
+- **Songs**: every built-in song is well formed and every track names an existing song of its own; the generator is deterministic and keeps to the hook rules for 300 seeds in each mood.
 - **Sim**: determinism and basic jump distance.
 - **Music analysis**: tempo within 0.01 BPM and first beat within 4 ms on synthetic songs from 100 to 174 BPM, octave folding, bar line, bar intensity.
 - **Editor core**: sliced solver equals the whole one; stuck tracks are given up on quickly; every figure is whole beats, rule-clean and passable on the beat; automatic fill gives tracks both bots finish at 19 to 38 m/s; stored tracks load defensively.

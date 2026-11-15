@@ -10,12 +10,14 @@ const errs = [];
 p.on('pageerror', (e) => errs.push(e.message));
 await p.goto(url + '?debug', { waitUntil: 'load' });
 await new Promise((r) => setTimeout(r, 1500));
-const tempos = { menu: 112, cyan: 120, solar: 130, toxic: 140, frost: 145, gravity: 150, ember: 155, volt: 160, zero: 165 };
+const tempos = { menu: 112, cyan: 120, solar: 130, toxic: 140, frost: 145, gravity: 150, ember: 155, volt: 160, zero: 165, horizon: 170,
+  drift: 120, flare: 130, pulse: 140, line: 145, well: 150, rush: 155, storm: 160, point: 165, neon: 170 };
 await p.evaluate(() => { window.__game.mode = 'pause'; }); // stop drawing: software GL would starve the render
-const names = process.argv[3] ? process.argv[3].split(',') : await p.evaluate(() => Object.keys(window.__songs));
+// every built-in song, plus one generated song per mood (any `gen:<seed>[:<mood>]` name can be passed as the third argument)
+const names = process.argv[3] ? process.argv[3].split(',') : [...(await p.evaluate(() => Object.keys(window.__songs))), 'gen:1:chase', 'gen:2:night', 'gen:3:cold'];
 const rows = [];
 for (const name of names) {
-  for (const energy of [1, 2, 3]) rows.push({ song: name, energy, ...(await p.evaluate((n, e, bpm) => window.__audio.render(n, 4, e, bpm), name, energy, tempos[name] ?? 120)) });
+  for (const energy of [1, 2, 3]) rows.push({ song: name, energy, ...(await p.evaluate((n, e, bpm) => window.__audio.render(n, 4, e, bpm), name, energy, tempos[name] ?? 140)) });
 }
 let bad = 0;
 for (const r of rows) {
@@ -27,7 +29,7 @@ for (const r of rows) {
   if (r.mid - r.low > 14) problems.push('NO BASS');
   if (r.high < r.mid - 26) problems.push('DULL');
   if (problems.length) bad++;
-  console.log(`${r.song.padEnd(8)} e${r.energy}  peak ${r.peak.toFixed(3)}  rms ${String(r.rms).padStart(6)} dB  low ${String(r.low).padStart(6)}  mid ${String(r.mid).padStart(6)}  high ${String(r.high).padStart(6)}  ${problems.join(' ')}`);
+  console.log(`${r.song.padEnd(13)} e${r.energy}  peak ${r.peak.toFixed(3)}  rms ${String(r.rms).padStart(6)} dB  low ${String(r.low).padStart(6)}  mid ${String(r.mid).padStart(6)}  high ${String(r.high).padStart(6)}  ${problems.join(' ')}`);
 }
 console.log(bad ? `${bad} problem(s)` : 'all songs within range', errs);
 await b.close();

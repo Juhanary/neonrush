@@ -73,7 +73,7 @@ describe('music analysis', () => {
 });
 
 /**
- * Real mixes: the built-in songs rendered offline with their full arrangement (quiet first bars, loud
+ * Real mixes: built-in songs of both sets and a generated one, rendered offline with their full arrangement (quiet first bars, loud
  * later ones) and reduced to their onset curves by scripts/analyse.mjs. These are what taught the
  * analysis to tell a tempo from its 4/3 relative and the beat from the off-beat, so they are kept as a
  * fixture. The first note of every render is 0.05 s in, and the mix bus delays it by another 12 ms.

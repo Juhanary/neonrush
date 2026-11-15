@@ -42,7 +42,10 @@ export interface CustomLevel {
   /** Palette index (render/palette.ts). */
   world: number;
   speed: number;
-  /** Built-in song: the music of a track without a file, and the stand-in when the file is not on this device. */
+  /**
+   * Name of a built-in or generated song (audio/generate.ts `songByName`, e.g. 'drift' or 'gen:4711:chase'):
+   * the music of a track without a file, and the stand-in when the file is not on this device.
+   */
   song: string;
   rows: string[];
   /** Bars inside a gravity-flip zone. */
@@ -52,7 +55,7 @@ export interface CustomLevel {
 }
 
 export function blankLevel(id: string, name: string, bars = 16): CustomLevel {
-  return { v: 1, id, name, world: 0, speed: 24, song: 'cyan', rows: Array<string>(bars * BAR_ROWS).fill(F), flipBars: [], updated: 0 };
+  return { v: 1, id, name, world: 0, speed: 24, song: 'drift', rows: Array<string>(bars * BAR_ROWS).fill(F), flipBars: [], updated: 0 };
 }
 
 export const barsOf = (c: CustomLevel): number => Math.floor(c.rows.length / BAR_ROWS);
@@ -144,7 +147,7 @@ export function sanitize(raw: unknown): CustomLevel | null {
   }
   return {
     v: 1, id: r.id, name: String(r.name ?? 'TRACK').slice(0, 24), world: Math.round(num(r.world, 0, 0, 99)),
-    speed: music ? music.bpm / 5 : num(r.speed, 24, MIN_SPEED, MAX_SPEED), song: typeof r.song === 'string' ? r.song : 'cyan', rows,
+    speed: music ? music.bpm / 5 : num(r.speed, 24, MIN_SPEED, MAX_SPEED), song: typeof r.song === 'string' ? r.song : 'drift', rows,
     flipBars: Array.isArray(r.flipBars) ? r.flipBars.filter((b) => Number.isInteger(b) && b >= 0 && b < bars) : [],
     music, updated: num(r.updated, 0, 0, Number.MAX_SAFE_INTEGER),
   };
