@@ -8,6 +8,12 @@ export const CFG = {
   tileW: 2.4,
   tileL: 4,
   blockH: 1.6,
+  /**
+   * Spikes ('x'): red pyramids that destroy the ship on contact. Unlike a block they cannot be landed on,
+   * so they are always jumped. The hitbox is the ship's footprint shrunk by `spikeInset` on every side.
+   */
+  spikeH: 1.0,
+  spikeInset: 0.2,
 
   boostSpeed: 37,
   boostTime: 1.1,

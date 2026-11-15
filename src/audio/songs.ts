@@ -75,6 +75,13 @@ const WAVE: [Kit, Kit, Kit] = [
   k('x.....x.x.x.....', '....x.......x..o', '....x.......x...', 'xoxoxoxoxoxoxoxo', '......x.......x.', '..........x..x.x'),
 ];
 
+/** Darksynth drive: kick on every beat, a huge backbeat snare, rolling sixteenths. */
+const DRIVE: [Kit, Kit, Kit] = [
+  k('x...x...x...x...', '....x.......x...', NONE, 'x.x.x.x.x.x.x.x.', NONE),
+  k('x...x...x...x...', '....X.......X...', '....x.......x...', 'xoxoxoxoxoxoxoxo', '..x...x...x...x.'),
+  k('x...x...x..xx...', '....X..o....X.oo', '....x.......x...', 'xxoxxxoxxxoxxxox', '..x...x...x...x.', '.x.....x.x......'),
+];
+
 export const SONGS: Record<string, Song> = {
   /** Menu theme: F#m D A E, a sung-style hook that repeats its first bar three times. */
   menu: {
@@ -179,6 +186,19 @@ export const SONGS: Record<string, Song> = {
       B: ['e--c--a---7-a---', 'd--a--6---5-6---', 'c--a--7---5-7---', 'b---a---7---5-4-'],
     },
     form: 'AABA', stab: '..x..x....x..x..',
+  },
+  /** World 9 (extreme), 170 BPM: G minor darksynth. Galloping bass, a three-note riff that climbs with the chords. */
+  horizon: {
+    key: 67, scale: MINOR, chords: '1674', kit: DRIVE,
+    bass: { kind: 'pluck', oct: -2, pat: ['1...1...1...1...', '1.1.1.1.1.1.1.1.', '1.181.181.181.18'] },
+    arp: { oct: 1, pat: '13581358a8531358', bright: 4200, from: 2 },
+    pad: { oct: -1, from: 1, seventh: true },
+    lead: {
+      kind: 'saw', oct: 0,
+      A: ['5..5..4.3...1.3.', '6..6..5.3...1.3.', '7..7..6.4...2.4.', 'a...7...6.5.4.5.'],
+      B: ['c-----b-a---7---', 'a-----7-6---5---', '7-----a-b---c---', 'd---c---b---a---'],
+    },
+    form: 'AABA', stab: 'x..x..x...x..x..',
   },
   /** World 8, 165 BPM: F# minor drum and bass anthem with a wide supersaw lead. */
   zero: {

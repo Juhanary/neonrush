@@ -16,6 +16,8 @@ export interface LevelDef {
   name: string;
   world: number;
   speed: number;
+  /** Shown as EXTREME in the menu. */
+  extreme?: boolean;
   /** Name of the song (audio/songs.ts). The tempo is not stored: it follows from the speed (Level.bpm). */
   song: string;
   rows: string[];
@@ -55,7 +57,7 @@ export class Level {
   }
 
   /**
-   * A checkpoint needs two rows of floor (ice and rails count) in one lane and no block right after them.
+   * A checkpoint needs two rows of floor (ice and rails count) in one lane and no block or spike right after them.
    * The lane nearest the middle wins, so the result depends only on the level data.
    */
   private findCheckpoints(): Checkpoint[] {
@@ -67,7 +69,7 @@ export class Level {
       // never between a boost pad and the long jump it is there for
       if (row - last < CFG.checkpointGap || row - boost < 12) continue;
       for (const lane of [2, 1, 3, 0, 4]) {
-        if (plain(row, lane) && plain(row + 1, lane) && this.tile(row + 2, lane) !== '#') {
+        if (plain(row, lane) && plain(row + 1, lane) && this.tile(row + 2, lane) !== '#' && this.tile(row + 2, lane) !== 'x') {
           out.push({ row, x: this.laneCenter(lane), z: row * CFG.tileL + 1 });
           last = row;
           break;
@@ -138,7 +140,7 @@ export class Level {
     return this.rows[row][lane];
   }
 
-  /** Walkable surface height at a point, or null over a gap. `beat` (the ship's beat position) only matters for moving tiles. */
+  /** Walkable surface height at a point, or null over a gap. Spikes ('x') stand on floor (height 0) and are lethal in Sim. `beat` (the ship's beat position) only matters for moving tiles. */
   heightAt(x: number, z: number, beat = 0): number | null {
     const row = this.rowOf(z);
     const lane = this.laneOf(x);

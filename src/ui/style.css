@@ -144,3 +144,8 @@ h2 { margin: 0 0 6px; font-size: clamp(24px, 6vw, 48px); font-weight: 900; font-
 #guideList p { margin: 0; font: 12.5px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; letter-spacing: 0; opacity: .92; }
 #guide h2 { font-size: clamp(18px, 4vw, 30px); margin: 0; }
 #guide .big { padding: 9px 30px; font-size: 13px; }
+
+/* extreme tracks */
+.card .ex { font-style: normal; padding: 1px 6px; margin-left: 4px; border-radius: 999px; font-size: 9px; letter-spacing: .14em;
+  color: #fff; background: #ff2a7a; box-shadow: 0 0 10px #ff2a7a; animation: exPulse .7s ease-in-out infinite alternate; }
+@keyframes exPulse { from { box-shadow: 0 0 4px #ff2a7a; } to { box-shadow: 0 0 14px #ff2a7a; } }

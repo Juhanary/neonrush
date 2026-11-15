@@ -193,6 +193,18 @@ export class Sim {
       }
     }
 
+    // --- spikes: any part of the (slightly shrunk) footprint over a spike tile, below its tip ---
+    if (s.y < CFG.spikeH) {
+      const hx = CFG.shipHalfW - CFG.spikeInset, hz = CFG.shipHalfL - CFG.spikeInset;
+      for (const [dx, dz] of [[-hx, hz], [hx, hz], [-hx, -hz], [hx, -hz], [0, 0]]) {
+        if (L.tile(L.rowOf(s.z + dz), L.laneOf(s.x + dx)) === 'x') {
+          s.alive = false;
+          this.events.push({ type: 'crash' });
+          return;
+        }
+      }
+    }
+
     // --- tiles under the ship ---------------------------------------------
     const row = L.rowOf(s.z);
     const lane = L.laneOf(s.x);

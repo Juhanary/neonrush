@@ -4,11 +4,11 @@ import { translate, type Key, type Lang } from './i18n';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const GUIDE: [string, string][] = [
-  ['\u266A', 'beat'], ['\u25C6', 'gem'], ['\u2197', 'jump'], ['\u25A0', 'block'], ['\u25B2', 'pad'], ['\u00BB', 'boost'], ['\u25C7', 'ice'],
+  ['\u266A', 'beat'], ['\u25C6', 'gem'], ['\u2197', 'jump'], ['\u25A0', 'block'], ['\u25B3', 'spike'], ['\u25B2', 'pad'], ['\u00BB', 'boost'], ['\u25C7', 'ice'],
   ['\u21C4', 'move'], ['\u2551', 'rail'], ['\u21C5', 'flip'], ['\u2605', 'hype'], ['\u25C8', 'prac'],
 ];
 
-export interface LevelCard { name: string; world: number; best: number; gems: number; gemTotal: number; done: boolean; stars: number; css: string; css2: string }
+export interface LevelCard { name: string; world: number; best: number; gems: number; gemTotal: number; done: boolean; stars: number; css: string; css2: string; extreme?: boolean }
 
 export interface UiHandlers {
   play(i: number): void; pause(): void; resume(): void; restart(): void; menu(): void; next(): void; mute(): boolean; lang(): void;
@@ -113,7 +113,7 @@ export class Ui {
       b.className = this.practice ? 'card prac' : 'card';
       b.style.setProperty('--c1', c.css);
       b.style.setProperty('--c2', c.css2);
-      b.innerHTML = `<span class="go">${c.done ? '&#9733;' : '&#9654;'}</span><small>${this.t('world')} ${c.world + 1}</small><strong>${c.name}</strong>
+      b.innerHTML = `<span class="go">${c.done ? '&#9733;' : '&#9654;'}</span><small>${this.t('world')} ${c.world + 1}${c.extreme ? ` <em class="ex">${this.t('extreme')}</em>` : ''}</small><strong>${c.name}</strong>
         <div class="meter"><i style="width:${c.best}%"></i></div>
         <div class="meta"><span>${c.best}%</span><span class="st">${'&#9733;'.repeat(c.stars)}<u>${'&#9733;'.repeat(3 - c.stars)}</u></span><span>&#9670; ${c.gems}/${c.gemTotal}</span></div>`;
       b.addEventListener('click', () => this.h.play(i));

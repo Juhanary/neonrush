@@ -31,6 +31,8 @@ export interface Paint {
 }
 
 export const STEALTH: Paint = { hull: 0x171c30, panel: 0x0c0f1c, canopy: 0x1f5cff, edge: 0xe6eeff, accent: 0x6aa8ff, engine: 0x4f8dff };
+/** The concept-art paint: dark indigo hull, cyan outlines and lights, magenta engines. */
+export const NEON: Paint = { hull: 0x232a66, panel: 0x141844, canopy: 0x2ee8ff, edge: 0x5aeeff, accent: 0x2ee8ff, engine: 0xff3ad8 };
 
 function glowTexture(): THREE.Texture {
   const c = document.createElement('canvas');
@@ -178,5 +180,130 @@ function dart(paint: Paint): ShipVisual {
   };
 }
 
-export const SHIPS: Record<string, ShipFactory> = { dart: () => dart(STEALTH) };
-export const DEFAULT_SHIP = 'dart';
+/**
+ * Default craft, after the concept art: a broad fuselage with a raised cockpit and a cyan visor slot,
+ * stepped swept wings, and two big round engines under the wing roots that burn magenta.
+ */
+function nova(paint: Paint): ShipVisual {
+  const root = new THREE.Group();
+  const trash: { dispose(): void }[] = [];
+  const lineMat = new THREE.LineBasicMaterial({ color: new THREE.Color(paint.edge).multiplyScalar(0.95) });
+  const flatMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  const accentMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(paint.accent).multiplyScalar(1.6), side: THREE.DoubleSide });
+  trash.push(lineMat, flatMat, accentMat);
+  const part = (points: number[][], faces: number[][], colour: number, outline = true) => {
+    const geo = tris(points, faces, new THREE.Color(colour));
+    const m = new THREE.Mesh(geo, flatMat);
+    trash.push(geo);
+    if (outline) {
+      const e = new THREE.EdgesGeometry(geo, 14);
+      m.add(new THREE.LineSegments(e, lineMat));
+      trash.push(e);
+    }
+    root.add(m);
+    return m;
+  };
+  /** A lit quad (cyan light strip), given its four corners. */
+  const strip = (q: number[][]) => {
+    const g = new THREE.BufferGeometry();
+    const [a, b, c, d] = q;
+    g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...d], 3));
+    trash.push(g);
+    root.add(new THREE.Mesh(g, accentMat));
+  };
+
+  // ---- fuselage (forward is -Z): flat wide nose, widest at the wing roots, squared tail ----
+  //        0 nose L         1 nose R        2 cheek L          3 cheek R          4 waist L        5 waist R
+  const B = [[-0.2, 0.04, -1.3], [0.2, 0.04, -1.3], [-0.42, 0.06, -0.55], [0.42, 0.06, -0.55], [-0.55, 0.05, 0.35], [0.55, 0.05, 0.35],
+    //  6 tail L          7 tail R          8 top front      9 top back       10 keel
+    [-0.42, 0.1, 0.95], [0.42, 0.1, 0.95], [0, 0.2, -0.9], [0, 0.3, 0.85], [0, -0.16, 0.0]];
+  part(B, [
+    [0, 8, 1], [0, 2, 8], [1, 8, 3], [2, 4, 9], [2, 9, 8], [3, 8, 9], [3, 9, 5], [4, 6, 9], [5, 9, 7], [6, 7, 9],
+    [0, 1, 10], [0, 10, 2], [1, 3, 10], [2, 10, 4], [3, 5, 10], [4, 10, 6], [5, 7, 10], [6, 10, 7],
+  ], paint.hull);
+
+  // ---- cockpit hump with the visor slot on its front face ----
+  const C = [[-0.26, 0.17, -0.78], [0.26, 0.17, -0.78], [-0.3, 0.26, -0.05], [0.3, 0.26, -0.05],
+    [-0.2, 0.42, -0.6], [0.2, 0.42, -0.6], [-0.22, 0.46, -0.1], [0.22, 0.46, -0.1], [0, 0.3, 0.45]];
+  part(C, [[0, 1, 5], [0, 5, 4], [4, 5, 7], [4, 7, 6], [0, 4, 6], [0, 6, 2], [1, 7, 5], [1, 3, 7], [2, 6, 8], [3, 8, 7], [6, 7, 8]], paint.panel);
+  strip([[-0.15, 0.255, -0.735], [0.15, 0.255, -0.735], [0.12, 0.37, -0.64], [-0.12, 0.37, -0.64]]);
+  // the cockpit window on top of the hump, seen from the chase camera
+  strip([[-0.13, 0.433, -0.5], [0.13, 0.433, -0.5], [0.15, 0.468, -0.22], [-0.15, 0.468, -0.22]]);
+  // a cyan U on the tail, like the trim in the concept art
+  strip([[-0.22, 0.2, 0.62], [-0.13, 0.215, 0.6], [-0.13, 0.262, 0.86], [-0.22, 0.24, 0.86]]);
+  strip([[0.22, 0.2, 0.62], [0.13, 0.215, 0.6], [0.13, 0.262, 0.86], [0.22, 0.24, 0.86]]);
+  strip([[-0.22, 0.24, 0.86], [0.22, 0.24, 0.86], [0.22, 0.225, 0.93], [-0.22, 0.225, 0.93]]);
+
+  const thrusters: THREE.Vector3[] = [];
+  const glows: THREE.Sprite[] = [];
+  const tex = glowTexture();
+  const hot = new THREE.Color(paint.engine);
+  const ringGeo = new THREE.RingGeometry(0.12, 0.2, 18);
+  const ringMat = new THREE.MeshBasicMaterial({ color: hot.clone().multiplyScalar(2.4), side: THREE.DoubleSide });
+  const coreGeo = new THREE.CircleGeometry(0.13, 18);
+  const coreMat = new THREE.MeshBasicMaterial({ color: hot.clone().lerp(new THREE.Color(1, 1, 1), 0.75).multiplyScalar(2.6), side: THREE.DoubleSide });
+  const glowMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().multiplyScalar(1.1), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  trash.push(tex, ringGeo, ringMat, coreGeo, coreMat, glowMat);
+
+  for (const s of [-1, 1]) {
+    // ---- stepped swept wing with a raised ridge ----
+    const W = [[s * 0.45, 0.07, -0.5], [s * 0.9, 0.05, -0.2], [s * 0.92, 0.05, -0.06], [s * 1.55, -0.04, 0.22],
+      [s * 1.5, -0.04, 0.56], [s * 1.0, 0.02, 0.5], [s * 0.55, 0.07, 0.72], [s * 0.85, 0.14, 0.18]];
+    part(W, [[0, 1, 7], [1, 2, 7], [2, 3, 7], [3, 4, 7], [4, 5, 7], [5, 6, 7], [6, 0, 7]], paint.hull);
+    // underside, slightly lower, so the wing has thickness
+    part(W.map(([x, y, z]) => [x, y - 0.07, z]), [[0, 7, 1], [1, 7, 2], [2, 7, 3], [3, 7, 4], [4, 7, 5], [5, 7, 6], [6, 7, 0]], paint.panel, false);
+    // lit leading edge and tip
+    strip([[s * 0.45, 0.075, -0.5], [s * 0.9, 0.055, -0.2], [s * 0.9, 0.06, -0.12], [s * 0.47, 0.078, -0.4]]);
+    strip([[s * 0.92, 0.055, -0.06], [s * 1.55, -0.035, 0.22], [s * 1.53, -0.03, 0.31], [s * 0.94, 0.06, 0.04]]);
+
+    // ---- engine: a six-sided nacelle under the wing root with a big round exhaust ----
+    const ex = s * 0.62, ey = -0.04, r = 0.24;
+    const ring = (z: number, k: number) => Array.from({ length: 6 }, (_, i) => {
+      const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+      return [ex + Math.cos(a) * r * k, ey + Math.sin(a) * r * k, z];
+    });
+    const N = [[ex, ey, -0.5], ...ring(0.0, 0.85), ...ring(0.95, 1)];
+    const faces: number[][] = [];
+    for (let i = 0; i < 6; i++) {
+      const a = 1 + i, b = 1 + ((i + 1) % 6), c = 7 + i, d = 7 + ((i + 1) % 6);
+      faces.push([0, a, b], [a, c, d], [a, d, b]);
+    }
+    part(N, faces, paint.hull);
+    const rim = new THREE.Mesh(ringGeo, ringMat);
+    rim.position.set(ex, ey, 0.955);
+    root.add(rim);
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    core.position.set(ex, ey, 0.95);
+    root.add(core);
+    const glow = new THREE.Sprite(glowMat);
+    glow.position.set(ex, ey, 1.12);
+    root.add(glow);
+    glows.push(glow);
+    thrusters.push(new THREE.Vector3(ex, ey, 1.02));
+  }
+
+  const underMat = new THREE.SpriteMaterial({ map: tex, color: hot.clone().multiplyScalar(0.18), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  trash.push(underMat);
+  const under = new THREE.Sprite(underMat);
+  under.position.set(0, -0.45, 0.2);
+  root.add(under);
+
+  const SCALE = 1.15;
+  root.scale.setScalar(SCALE);
+  for (const t of thrusters) t.multiplyScalar(SCALE);
+  return {
+    root, thrusters,
+    trail: hot.clone().lerp(new THREE.Color(1, 1, 1), 0.3).multiplyScalar(1.3),
+    exhaust: hot.clone().multiplyScalar(0.7),
+    update(time, power) {
+      const f = 0.85 + 0.15 * Math.sin(time * 47) + 0.1 * Math.sin(time * 31.7);
+      const sz = (0.3 + 0.2 * power) * f;
+      for (const g of glows) g.scale.set(sz, sz, 1);
+      under.scale.set(2.1 + 0.2 * Math.sin(time * 6), 0.65, 1);
+    },
+    dispose() { for (const t of trash) t.dispose(); },
+  };
+}
+
+export const SHIPS: Record<string, ShipFactory> = { nova: () => nova(NEON), dart: () => dart(STEALTH) };
+export const DEFAULT_SHIP = 'nova';

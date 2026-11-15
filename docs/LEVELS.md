@@ -13,7 +13,7 @@ Neonrush is a rhythm game: the road is the sheet music. Work in bars and beats, 
 
 Tempo is not chosen, it follows from speed: `BPM = speed × 5` (24 m/s = 120 BPM, 33 m/s = 165 BPM). Speeds so far: 24, 26, 28, 29, 30, 31, 32, 33.
 
-Tile characters: `.` gap, `=` floor, `#` block, `^` jump pad, `>` boost pad, `o` gem, `O` high gem, `*` gem over a gap, `+` gem on a pad arc, `m` moving road, `i` ice, `|` rail.
+Tile characters: `.` gap, `=` floor, `#` block, `^` jump pad, `>` boost pad, `o` gem, `O` high gem, `*` gem over a gap, `+` gem on a pad arc, `m` moving road, `i` ice, `|` rail, `x` spikes.
 
 ## Rules (the tests enforce the ones marked T)
 
@@ -26,7 +26,8 @@ Tile characters: `.` gap, `=` floor, `#` block, `^` jump pad, `>` boost pad, `o`
 7. **Lane changes and side jumps in every track.** A jump carries the ship about 2.5 lanes sideways. Shifting roads move one lane per beat (two beats per lane on ice).
 8. **Breathers.** At least one beat of full floor after every hard figure; two full rows in one lane every 30 rows at most, which is what creates practice checkpoints (T).
 9. **Nothing new without a hint** in the track where it first appears (`h('key', lead)` plus a text key in `src/ui/i18n.ts`, English and Finnish).
-10. **Three-row gaps (`leap`) need 28 m/s or more.** A boost jump is four gap rows, taken from the second beat row after the pad (`boost()` is a whole bar).
+10. **Spikes (`x`) kill on contact and cannot be landed on.** Put a spike row on the third row of a beat (`[F, F, 'xxxxx']`) and never more than two rows deep (T); the take-off is on the beat. Spike walls with an opening (`'xx=xx'`) are driven through. Inside a flip zone a spiked floor means "do not touch the floor", and these rules do not apply.
+11. **Three-row gaps (`leap`) need 28 m/s or more.** A boost jump is four gap rows, taken from the second beat row after the pad (`boost()` is a whole bar).
 
 ## Helpers in `src/core/levels.ts`
 

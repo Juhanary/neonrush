@@ -27,6 +27,14 @@ describe('rhythm', () => {
       const res = solve(level, 6, 0, Infinity, true);
       expect(res.ok, `stuck at row ${Math.floor(res.furthest / CFG.tileL)} (bar ${Math.floor(res.furthest / CFG.tileL / BAR_ROWS) + 1})`).toBe(true);
     });
+    it(`${def.name}: spikes start on the third row of a beat and are at most two rows deep`, () => {
+      def.rows.forEach((row, r) => [...row].forEach((c, l) => {
+        if (c !== 'x' || level.inFlip((r + 0.5) * CFG.tileL)) return; // a spiked floor in a flip zone is fine
+        const prev = r > 0 ? def.rows[r - 1][l] : '.';
+        if (prev !== 'x') expect(r % CFG.rowsPerBeat, `row ${r} lane ${l}`).toBe(2);
+        else expect(r >= 2 && def.rows[r - 2][l] === 'x', `row ${r} lane ${l}: three deep`).toBe(false);
+      }));
+    });
     it(`${def.name}: gems, pads and boosts are on beat rows (gems in the air may follow the beat row)`, () => {
       def.rows.forEach((row, r) => {
         const beatRow = r % CFG.rowsPerBeat === 0;
@@ -67,6 +75,24 @@ describe('practice checkpoints', () => {
       }
     });
   }
+});
+
+describe('spikes', () => {
+  const spiky = new Level({ id: 'spike-test', name: 'T', world: 0, speed: 30, song: 'cyan', rows: [...Array(6).fill('====='), '=====', '=====', 'xxxxx', ...Array(20).fill('=====')] });
+  it('driving into a spike row destroys the ship', () => {
+    const sim = new Sim(spiky);
+    for (let i = 0; i < 240 && sim.s.alive; i++) sim.step({ steer: 0, jumpPressed: false, jumpHeld: false });
+    expect(sim.s.alive).toBe(false);
+    expect(Math.floor(sim.s.z / CFG.tileL)).toBeGreaterThanOrEqual(7);
+  });
+  it('a jump on the beat before them clears a spike row', () => {
+    const sim = new Sim(spiky);
+    for (let i = 0; i < 360 && sim.s.alive && !sim.s.finished && sim.s.z < 20 * CFG.tileL; i++) {
+      const b = spiky.beatAt(sim.s.z);
+      sim.step({ steer: 0, jumpPressed: Math.abs(b - 2) < 0.05, jumpHeld: false });
+    }
+    expect(sim.s.alive).toBe(true);
+  });
 });
 
 describe('jump pads', () => {

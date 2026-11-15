@@ -7,8 +7,9 @@
 3. A ship's looks (`src/render/ship.ts`) are separate from its movement (`src/core/sim.ts`). New bodies are new factories in `SHIPS`.
 4. Levels are plain text rows (`src/core/levels.ts`), one character per lane.
 5. Each world has one palette (`src/render/palette.ts`). The obstacle hue is never used for decoration.
-6. The ship never takes colours from the world. It is built once from parts and a `Paint` (`src/render/ship.ts`) and owns the colour of its trail and exhaust.
-7. Sight line: nothing decorative is drawn in the corridor above the road ahead of the ship. Rewards fire as fountains beside the road, banners sit in the sky above the horizon, trails are short, and the flip-zone ceiling is dim.
+6. A palette may carry a `look` (crate blocks, ring gems, floating islands, sunset sky): style switches for the worlds drawn after the concept art. They never change what a tile does.
+7. The ship never takes colours from the world. It is built once from parts and a `Paint` (`src/render/ship.ts`) and owns the colour of its trail and exhaust.
+8. Sight line: nothing decorative is drawn in the corridor above the road ahead of the ship. Rewards fire as fountains beside the road, banners sit in the sky above the horizon, trails are short, and the flip-zone ceiling is dim.
 
 ## Frame flow
 
@@ -30,6 +31,7 @@ Input.sample() -> Sim.step() x N (fixed dt) -> Sim.events -> View.onEvent / Game
 | `O` | floor with a high gem (needs a jump) |
 | `*` | gap with a gem in the air |
 | `+` | gap with a gem high on a jump-pad arc |
+| `x` | spikes: floor with red pyramids, lethal below `spikeH` anywhere in the (inset) footprint; cannot be landed on |
 | `m` | moving road: slides sideways as `moveAmp * sin(beat * moveBeat - row * moveK)`, where `beat` is the ship's beat position (sim and shader share the constants) |
 | `i` | ice: steering grip drops to `iceGrip` |
 | `\|` | rail: a narrow beam in the middle of the lane |

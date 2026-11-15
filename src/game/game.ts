@@ -132,7 +132,7 @@ export class Game {
       const pal = PALETTES[l.def.world % PALETTES.length];
       return {
         name: l.def.name, world: l.def.world, best: Math.round(this.save.best[l.def.id] ?? 0),
-        gems: this.save.gems[l.def.id] ?? 0, gemTotal: l.gemCount, done: !!this.save.done[l.def.id], stars: this.save.stars[l.def.id] ?? 0, css: pal.css, css2: pal.css2,
+        gems: this.save.gems[l.def.id] ?? 0, gemTotal: l.gemCount, done: !!this.save.done[l.def.id], stars: this.save.stars[l.def.id] ?? 0, css: pal.css, css2: pal.css2, extreme: l.def.extreme,
       };
     }));
   }

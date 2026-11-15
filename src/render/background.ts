@@ -4,10 +4,15 @@ import { rng } from './track';
 
 const SKY_FRAG = /* glsl */ `
 uniform vec3 uTop, uHorizon, uBottom, uGlow, uPlanetA, uPlanetB;
-uniform float uTime, uBeat, uHype, uRec, uFlip;
+uniform float uTime, uBeat, uHype, uRec, uFlip, uSunset;
 varying vec3 vDir;
 vec3 hue(float h) { return 0.5 + 0.5 * cos(6.2832 * (h + vec3(0.0, 0.33, 0.67))); }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
 void main() {
   vec3 d = normalize(vDir);
   float h = d.y;
@@ -39,11 +44,29 @@ void main() {
   col += vec3(1.0) * step(0.985, st) * smoothstep(0.14, 0.0, length(fract(sg) - 0.5))
        * (0.5 + 0.5 * sin(uTime * 3.0 + st * 100.0)) * smoothstep(0.1, 0.4, h);
 
-  // striped planet with a ring
-  vec3 pd = normalize(vec3(-0.44, 0.30, -1.0));
+  // concept-art worlds: a big striped sunset sun on the horizon, left of the road
+  if (uSunset > 0.5) {
+    vec3 sd = normalize(vec3(-0.30, 0.13, -1.0));
+    float sa = acos(clamp(dot(d, sd), -1.0, 1.0));
+    float SR = 0.27;
+    float sy = (d.y - sd.y) / SR;                     // -1 bottom .. 1 top
+    float gaps = sy < 0.25 ? step(0.18 + 0.35 * smoothstep(0.25, -0.9, sy), fract(sy * 5.0 + uTime * 0.15)) : 1.0;
+    vec3 sun = mix(vec3(1.0, 0.25, 0.62), vec3(1.0, 0.62, 0.22), smoothstep(-0.9, 0.2, sy));
+    sun = mix(sun, vec3(1.0, 0.9, 0.38), smoothstep(0.2, 0.95, sy));
+    float sdisc = smoothstep(SR, SR - 0.004, sa) * gaps * smoothstep(-0.02, 0.01, h);
+    col = mix(col, sun * 0.72, sdisc);
+    col += vec3(1.0, 0.4, 0.55) * exp(-max(sa - SR, 0.0) * 9.0) * 0.14 * (0.85 + 0.3 * uBeat) * smoothstep(-0.1, 0.05, h);
+    // pink cloud banks below the horizon, seen under and between the platforms
+    vec2 cp = vec2(az * 3.5 + uTime * 0.01, h * 9.0);
+    float cl = smoothstep(0.42, 0.75, fbm(cp + vec2(0.0, uTime * 0.02))) * smoothstep(0.06, -0.06, h) * smoothstep(-0.7, -0.15, h);
+    col = mix(col, mix(vec3(1.0, 0.45, 0.85), vec3(0.75, 0.3, 0.95), smoothstep(-0.1, -0.5, h)) * (0.75 + 0.25 * uBeat), cl * 0.8);
+  }
+
+  // striped planet with a ring (up and to the right when there is a sunset sun)
+  vec3 pd = uSunset > 0.5 ? normalize(vec3(0.62, 0.52, -1.0)) : normalize(vec3(-0.44, 0.30, -1.0));
   float ca = dot(d, pd);
   float ang = acos(clamp(ca, -1.0, 1.0));
-  float R = 0.21;
+  float R = uSunset > 0.5 ? 0.15 : 0.21;
   float disc = smoothstep(R, R - 0.004, ang);
   float py = (d.y - pd.y) / R;
   float cut = py < 0.15 ? step(0.32, fract(py * 6.0 - uTime * 0.12)) : 1.0;
@@ -78,7 +101,7 @@ export class Background {
   constructor(pal: Palette, lengthZ: number) {
     const col = (h: number) => ({ value: new THREE.Color(h) });
     this.skyU = {
-      uTime: { value: 0 }, uBeat: { value: 0 }, uHype: { value: 0 }, uRec: { value: 0 }, uFlip: { value: 0 },
+      uTime: { value: 0 }, uBeat: { value: 0 }, uHype: { value: 0 }, uRec: { value: 0 }, uFlip: { value: 0 }, uSunset: { value: pal.look?.sunset ? 1 : 0 },
       uTop: col(pal.top), uHorizon: col(pal.horizon), uBottom: col(pal.bottom), uGlow: col(pal.glow),
       uPlanetA: col(pal.planetA), uPlanetB: col(pal.planetB),
     };

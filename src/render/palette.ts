@@ -4,6 +4,19 @@ export interface Palette {
   floor: number; edge: number; block: number; blockEdge: number;
   accent: number; gem: number; /** Unused since the ship owns its trail colour; kept for world-coloured effects later. */ trail: number; planetA: number; planetB: number;
   css: string; css2: string;
+  /** Optional style switches, used by worlds drawn after the concept art. */
+  look?: Look;
+}
+
+export interface Look {
+  /** Blocks are crates: dark faces with a glowing frame and a diamond emblem instead of stripes. */
+  crate?: boolean;
+  /** Gems are gold rings instead of diamonds. */
+  rings?: boolean;
+  /** Floating islands, far spires and pink cloud banks instead of a city of pillars; spiked suns and ring portals beside the road. */
+  islands?: boolean;
+  /** A big striped sunset sun on the horizon behind the road, the planet moves up to the right. */
+  sunset?: boolean;
 }
 
 export const PALETTES: Palette[] = [
@@ -54,5 +67,12 @@ export const PALETTES: Palette[] = [
     floor: 0x20203a, edge: 0xf2f6ff, block: 0xff2a2a, blockEdge: 0xff9a8a,
     accent: 0x3affd0, gem: 0xffe53a, trail: 0xf2f6ff, planetA: 0xffffff, planetB: 0x5a5a9a,
     css: '#f2f6ff', css2: '#3affd0',
+  },
+  { // Neon Horizon (extreme): the concept art. Navy road, cyan edges, magenta sky, sunset, pink crates and spikes, gold rings
+    top: 0x1a0a5a, horizon: 0xd02ad8, bottom: 0x2a0a52, glow: 0xff4fd8, fog: 0x7a2ac8,
+    floor: 0x161c5a, edge: 0x2ee8ff, block: 0xff2a7a, blockEdge: 0xff7ab4,
+    accent: 0x3af6ff, gem: 0xffc21a, trail: 0xff3ad8, planetA: 0xd86aff, planetB: 0x5a1aa8,
+    css: '#2ee8ff', css2: '#ff4fd8',
+    look: { crate: true, rings: true, islands: true, sunset: true },
   },
 ];

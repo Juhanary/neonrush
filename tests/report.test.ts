@@ -43,8 +43,16 @@ it.skipIf(!process.env.REPORT)('level report', () => {
       if (/[\^>oO]/.test(row) && !beatRow) warn.push(`${where}: pad or gem off the beat row "${row}"`);
       if (!beatRow && [...row].some(isGem) && r % 3 === 1 && !/[*+]/.test(row)) warn.push(`${where}: gem one row after the beat`);
       // a gap or wall that starts on a beat row forces an early take-off
-      const solid = (s: string) => /[=oOi|m^>]/.test(s);
+      const solid = (s: string) => /[=oOi|m^>x]/.test(s);
       if (beatRow && r > 0 && !solid(row) && solid(level.rows[r - 1])) warn.push(`${where}: gap starts ON the beat row; start it one row later so the take-off is on the beat`);
+      const prev = r > 0 ? level.rows[r - 1] : '';
+      // inside a flip zone a spiked floor is a different idea (do not touch the floor), so these rules do not apply
+      const inFlip = level.inFlip((r + 0.5) * CFG.tileL);
+      [...row].forEach((c, l) => {
+        if (inFlip || c !== 'x' || prev[l] === 'x') return;
+        if (r % 3 !== 2) warn.push(`${where}: spike in lane ${l} starts on row ${r % 3 + 1} of the beat; put it on the third row`);
+      });
+      if (!inFlip && r >= 2 && [...row].some((c, l) => c === 'x' && prev[l] === 'x' && level.rows[r - 2][l] === 'x')) warn.push(`${where}: spikes three rows deep cannot be cleared`);
     });
     for (const [a, b] of def.flips ?? []) if (a % BAR_ROWS || b % BAR_ROWS) warn.push(`flip zone ${a}-${b} is not on bar lines`);
     if (level.length !== 16 * BAR_ROWS) warn.push(`length is ${level.length} rows, expected ${16 * BAR_ROWS}`);

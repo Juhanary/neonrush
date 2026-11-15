@@ -16,6 +16,8 @@ import type { LevelDef } from './level';
  *   - jump pads land straight ahead with no steering.
  * The helpers below build one beat (three rows) at a time, and `bar` refuses anything that is not 12 rows.
  * See docs/LEVELS.md for the full method.
+ * Spikes ('x') kill on contact and cannot be landed on: put a spike row on the third row of a beat
+ * (`[F, F, 'xxxxx']`), never more than two rows deep, and jump it on the beat.
  */
 
 type Rows = string[];
@@ -274,4 +276,31 @@ const zeroPoint: LevelDef = {
   ]),
 };
 
-export const LEVELS: LevelDef[] = [cyanDrift, solarFlare, toxicPulse, frostLine, gravityWell, emberRush, voltStorm, zeroPoint];
+/** World 9 — EXTREME. Built after the concept art: spike rows, crate slaloms, a crate skyway, side jumps at 34 m/s. */
+const neonHorizon: LevelDef = {
+  id: 'neon-horizon', name: 'NEON HORIZON', world: 8, speed: 34, song: 'horizon', extreme: true,
+  energy: '2233 2233 2333 3333',
+  ...build([
+    h('spikes', 3),
+    bar(run(), run(), on('=o=o='), [F, F, 'xxxxx']),
+    bar(['xxxxx', F, F], [F, F, 'xx=xx'], on('==o=='), hop()),
+    bar(on('###=='), run(), on('==###'), [F, F, 'x===x']),
+    bar(run('==...'), hop('=o...'), run('...=='), hop('...o=')),
+    bar(run('.==..'), run('..==.'), pad('..+..', 5)),
+    bar(run('#####', 2), ['..###', '..###', '...##'], ['...##', '...##', G]),
+    bar([G, '..===', '..==='], on('..o==', '..==='), run(), [F, F, 'xxx==']),
+    bar(['xxx==', F, F], hop(F, '...*.'), on('===o='), run()),
+    bar(boost('.*.*.')),
+    FLIP_ON,
+    bar(run(), run('xxxxx'), [F, F, '#####'], ['#####', F, F]),
+    bar(run(), [F, '..*..', G], run('xxxxx'), run()),
+    FLIP_OFF,
+    bar(run(), run(), on('=o=o='), hop()),
+    bar(run('.|...'), run('.||..'), run('..|..'), run('..||.')),
+    bar(run('.mmm.', 3), [F, F, 'xxxxx']),
+    bar(['xxxxx', F, F], on('###=='), run(), [F, F, 'xx=xx']),
+    bar(['xx=xx', F, F], hop('==o=='), run(), on('o=o=o')),
+  ]),
+};
+
+export const LEVELS: LevelDef[] = [cyanDrift, solarFlare, toxicPulse, frostLine, gravityWell, emberRush, voltStorm, zeroPoint, neonHorizon];
