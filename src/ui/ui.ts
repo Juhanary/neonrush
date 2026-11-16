@@ -4,7 +4,7 @@ import { translate, type Key, type Lang } from './i18n';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const GUIDE: [string, string][] = [
-  ['\u266A', 'beat'], ['\u25C6', 'gem'], ['\u2197', 'jump'], ['\u25A0', 'block'], ['\u25B3', 'spike'], ['\u25B2', 'pad'], ['\u00BB', 'boost'], ['\u25C7', 'ice'],
+  ['\u266A', 'beat'], ['\u25C6', 'gem'], ['\u2197', 'jump'], ['\u25A0', 'block'], ['\u25B3', 'spike'], ['\u2191', 'pad'], ['\u2192', 'boost'], ['\u25C7', 'ice'],
   ['\u21C4', 'move'], ['\u2551', 'rail'], ['\u21C5', 'flip'], ['\u2605', 'hype'], ['\u25C8', 'prac'], ['\u270E', 'edit'],
 ];
 

@@ -55,6 +55,12 @@ const pause = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 /** Canvas layout, in CSS pixels: the music strip on top, the minimap at the bottom, the lanes between. */
 const STRIP = 30, MAP = 14, GAP = 6;
 const ZOOMS = [34, 20];
+/** A new track is one section long; the player adds sections at the end as the track grows. */
+const SECTION = 4;
+/** Width of the "add a section" button drawn after the finish line. */
+const ADD_W = 104;
+/** Palette icons are drawn in a 34-unit box and shown this much larger. */
+const ICON = 1.3;
 const TILES: [string, string][] = [
   ['=', 'floor'], ['.', 'gap'], ['#', 'block'], ['x', 'spike'], ['o', 'gem'], ['O', 'gemHigh'], ['*', 'gemAir'], ['+', 'gemPad'],
   ['^', 'pad'], ['>', 'boost'], ['i', 'ice'], ['m', 'move'], ['|', 'rail'],
@@ -77,8 +83,8 @@ export class Editor {
   /** What the records of this track were earned on; a different track means they no longer count. */
   private sig = '';
   private undo: Snap[] = []; private redo: Snap[] = [];
-  private tool: Tool = { kind: 'pan' };
-  private tab: 'tiles' | 'figs' = 'figs';
+  private tool: Tool = { kind: 'tile', t: '#' };
+  private tab: 'tiles' | 'figs' = 'tiles';
   private cw = ZOOMS[0];
   private scroll = -20;
   private ptrs = new Map<number, { x: number; y: number }>();
@@ -169,13 +175,14 @@ export class Editor {
   open(id?: string, row?: number): void {
     const src = id ? this.host.store.get(id) : undefined;
     if (!src || src.id !== this.lv.id) {
-      this.lv = src ? (JSON.parse(JSON.stringify(src)) as CustomLevel) : blankLevel(this.host.store.newId(), `${this.host.t('ed.track')} ${this.host.store.list().length + 1}`);
+      this.lv = src ? (JSON.parse(JSON.stringify(src)) as CustomLevel) : blankLevel(this.host.store.newId(), `${this.host.t('ed.track')} ${this.host.store.list().length + 1}`, SECTION);
       this.undo = []; this.redo = [];
       this.buf = undefined; this.env = undefined; this.musicNote = '';
       this.scroll = -20;
       this.sig = this.signature();
-      this.tool = { kind: 'pan' };
-      this.tab = 'figs';
+      // building starts one block at a time
+      this.tool = { kind: 'tile', t: '#' };
+      this.tab = 'tiles';
       if (this.lv.music) void this.loadMusic();
     }
     this.note = src ? '' : this.t('ed.intro');
@@ -425,12 +432,6 @@ export class Editor {
       this.host.tracks.set(id, buf);
       this.lv.music = res.music;
       this.lv.speed = res.music.bpm / 5;
-      // a track that has not been built on yet takes the length of the song (up to 32 bars to start with)
-      if (this.lv.rows.every((r) => r === F)) {
-        const n = Math.max(MIN_BARS, Math.min(32, musicBars(res.music)));
-        this.lv.rows = Array<string>(n * BAR_ROWS).fill(F);
-        this.lv.flipBars = [];
-      }
       this.musicNote = '';
       this.changedRows();
       const kept = await this.host.store.putAudio(id, data);
@@ -627,10 +628,10 @@ export class Editor {
       const b = document.createElement('button');
       b.className = on ? 'on' : '';
       const cv = document.createElement('canvas');
-      cv.width = w * 2; cv.height = 68;
-      cv.style.width = w + 'px'; cv.style.height = '34px';
+      cv.width = Math.round(w * 2 * ICON); cv.height = Math.round(68 * ICON);
+      cv.style.width = Math.round(w * ICON) + 'px'; cv.style.height = Math.round(34 * ICON) + 'px';
       const c = cv.getContext('2d')!;
-      c.scale(2, 2);
+      c.scale(2 * ICON, 2 * ICON);
       paint(c);
       const s = document.createElement('span');
       s.textContent = label;
@@ -677,7 +678,7 @@ export class Editor {
   }
 
   private scrollTo(x: number): void {
-    const max = Math.max(-20, this.lv.rows.length * this.cw - this.w + 40);
+    const max = Math.max(-20, this.lv.rows.length * this.cw - this.w + ADD_W + 40);
     this.scroll = Math.max(-20, Math.min(max, x));
     this.draw();
   }
@@ -722,6 +723,7 @@ export class Editor {
     }
     if (this.ptrs.size > 2) return;
     if (p.y >= this.h - MAP - GAP / 2) { this.drag = { kind: 'map' }; this.mapScroll(p.x); return; }
+    if (this.overAdd(p)) { this.addSection(); return; }
     const tl = this.tool;
     const cell = this.cellAt(p.x, p.y);
     if (p.y < STRIP || tl.kind === 'pan' || !cell) { this.drag = { kind: 'pan', x: p.x, scroll: this.scroll }; return; }
@@ -743,6 +745,19 @@ export class Editor {
       this.drag = { kind: 'fig' };
       this.hover(p);
     }
+  }
+
+  /** Is the point on the "add a section" button after the finish line? */
+  private overAdd(p: { x: number; y: number }): boolean {
+    const x = this.lv.rows.length * this.cw - this.scroll + 16;
+    return barsOf(this.lv) < MAX_BARS && p.x >= x && p.x <= x + ADD_W && p.y >= STRIP && p.y < STRIP + this.laneH * CFG.lanes;
+  }
+
+  /** One more section of plain road at the end, scrolled into view. */
+  private addSection(): void {
+    const from = this.lv.rows.length;
+    this.setBars(barsOf(this.lv) + SECTION);
+    this.scrollTo(from * this.cw - this.w * 0.25);
   }
 
   private midX(): number {
@@ -930,6 +945,19 @@ export class Editor {
     if (X(n) < W) {
       const x = X(n), q = lh / 4;
       for (let i = 0; i < gh / q; i++) for (let j = 0; j < 2; j++) { c.fillStyle = (i + j) % 2 ? '#fff' : '#0a0a2e'; c.fillRect(x + j * q, gy + i * q, q, q); }
+    }
+
+    if (X(n) + 16 < W && barsOf(lv) < MAX_BARS) {
+      const x = X(n) + 16;
+      c.fillStyle = 'rgba(255,255,255,.06)';
+      c.fillRect(x, gy + 4, ADD_W, gh - 8);
+      c.strokeStyle = pal.css; c.lineWidth = 2; c.setLineDash([7, 5]);
+      c.strokeRect(x + 1, gy + 5, ADD_W - 2, gh - 10);
+      c.setLineDash([]);
+      c.fillStyle = '#fff'; c.textAlign = 'center';
+      c.font = font(34); c.fillText('+', x + ADD_W / 2, gy + gh / 2 + 4);
+      c.font = font(10); c.fillText(this.t('ed.addSection'), x + ADD_W / 2, gy + gh / 2 + 26);
+      c.textAlign = 'left';
     }
 
     // rule hints and the spot where a bot got stuck

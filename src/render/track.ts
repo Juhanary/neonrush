@@ -56,11 +56,6 @@ vec3 beatLine() {
   return uAccent * line * (0.5 + 0.5 * bar) * (0.55 + 0.9 * uBeat) * smoothstep(130.0, 70.0, vAhead);
 }
 
-float chevrons(float speed) {
-  float f = fract(vLocal.z * 2.5 - abs(vLocal.x) * 2.2 + uTime * speed);
-  return smoothstep(0.35, 0.5, f) * smoothstep(0.95, 0.8, f);
-}
-
 void main() {
   vec3 dd = (0.5 - abs(vLocal)) * vScale;
   float a = min(dd.x, min(dd.y, dd.z));
@@ -94,14 +89,20 @@ void main() {
     float stripes = step(0.5, fract((vWorld.x + vWorld.y) * 0.9 - uTime * 0.9));
     base = uBlock * (0.30 + 0.24 * stripes + 0.22 * uBeat);
     ecol = uBlockEdge; gain = 2.0 + 0.9 * uBeat;
-  } else if (vKind < 2.5) {     // jump pad
+  } else if (vKind < 2.5) {     // jump pad: square rings that pulse outwards (the arrows standing on it say "up")
+    float d = max(abs(vLocal.x), abs(vLocal.z)) * 2.0;
+    float ring = fract(d * 1.5 - uTime * 1.6);
     base = uAccent * 0.22;
-    if (top) base += uAccent * chevrons(2.2) * 1.5;
+    if (top) base += uAccent * (smoothstep(0.55, 0.7, ring) * smoothstep(1.0, 0.85, ring) * 1.3 + smoothstep(0.22, 0.12, d) * (0.8 + 0.8 * uBeat));
     ecol = uAccent; gain = 2.0 + 0.6 * uBeat;
-  } else if (vKind < 3.5) {     // boost pad
+  } else if (vKind < 3.5) {     // boost pad: one big arrow pointing forward, light streaming along it
     vec3 hot = mix(uEdge, vec3(1.0), 0.55);
-    base = hot * 0.2;
-    if (top) base += hot * chevrons(4.5) * 1.5;
+    float f = -vLocal.z, ax = abs(vLocal.x);
+    float head = step(0.0, f) * smoothstep(0.0, 0.03, (0.43 - f) * 0.95 - ax);
+    float shaft = step(f, 0.0) * step(-0.43, f) * smoothstep(0.13, 0.1, ax);
+    float stream = 0.55 + 0.45 * step(0.5, fract(f * 2.0 - uTime * 3.5));
+    base = hot * 0.14;
+    if (top) base += hot * max(head, shaft) * stream * 1.9;
     ecol = hot; gain = 2.2;
   } else if (vKind < 4.5) {     // finish runway
     float chk = mod(floor(vLocal.x * 4.0 + 8.0) + floor(vLocal.z * 4.0 + 8.0), 2.0);
@@ -201,6 +202,8 @@ export class Track {
   private markOn: THREE.Color;
   private disposables: { dispose(): void }[] = [];
   private spikeMat?: THREE.LineBasicMaterial;
+  private upArrows?: THREE.Mesh;
+  private upMat?: THREE.MeshBasicMaterial;
   private spikeBase = new THREE.Color();
   private rings = false;
 
@@ -269,6 +272,29 @@ export class Track {
       this.spikeMat = em;
       this.spikeBase.copy(em.color);
       this.group.add(mesh);
+    }
+
+    // ---- jump pads: an arrow pointing up stands on every pad tile, so a pad reads as "up" from afar ----
+    const ups: THREE.BufferGeometry[] = [];
+    const arrow = new THREE.Shape();
+    arrow.moveTo(0, 1.5); arrow.lineTo(0.62, 0.78); arrow.lineTo(0.24, 0.78); arrow.lineTo(0.24, 0); arrow.lineTo(-0.24, 0); arrow.lineTo(-0.24, 0.78); arrow.lineTo(-0.62, 0.78); arrow.closePath();
+    const arrowGeo = new THREE.ShapeGeometry(arrow);
+    for (let row = 0; row < level.length; row++) {
+      for (let lane = 0; lane < CFG.lanes; lane++) {
+        if (level.tile(row, lane) !== '^') continue;
+        ups.push(arrowGeo.clone().applyMatrix4(new THREE.Matrix4().makeTranslation(level.laneCenter(lane), 0.25, -(row + 0.5) * CFG.tileL)));
+      }
+    }
+    arrowGeo.dispose();
+    if (ups.length) {
+      const g = mergeGeometries(ups)!;
+      ups.forEach((x) => x.dispose());
+      const m = new THREE.MeshBasicMaterial({ color: hdr(pal.accent, 2.0), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      this.disposables.push(g, m);
+      this.upArrows = new THREE.Mesh(g, m);
+      this.upArrows.frustumCulled = false;
+      this.upMat = m;
+      this.group.add(this.upArrows);
     }
 
     // ---- gravity-flip zones: a deadly ceiling grid and a portal at each end ----
@@ -520,6 +546,12 @@ export class Track {
     u.uTime.value = time; u.uBeat.value = beat; u.uShipZ.value = shipZ;
     u.uPulse.value.z += dt;
     if (this.spikeMat) this.spikeMat.color.copy(this.spikeBase).multiplyScalar(0.8 + 0.5 * beat);
+    if (this.upArrows && this.upMat) {
+      // the arrows rise and fade, again and again
+      const k = (time * 1.3) % 1;
+      this.upArrows.position.y = k * 0.7;
+      this.upMat.opacity = 0.25 + 0.7 * (1 - k * k);
+    }
     for (const sp of this.spinners) sp.o.rotation.z += sp.s * dt;
     const s = 1 + beat * 0.06;
     this.portal.scale.set(s, s, 1);

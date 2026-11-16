@@ -10,12 +10,6 @@ function diamond(c: CanvasRenderingContext2D, x: number, y: number, r: number): 
   c.closePath();
 }
 
-function chevron(c: CanvasRenderingContext2D, x: number, y: number, s: number): void {
-  c.beginPath();
-  c.moveTo(x - s * 0.5, y - s); c.lineTo(x + s * 0.5, y); c.lineTo(x - s * 0.5, y + s);
-  c.stroke();
-}
-
 function floor(c: CanvasRenderingContext2D, pal: Palette, x: number, y: number, w: number, h: number, fill = css(pal.floor)): void {
   c.fillStyle = fill;
   c.fillRect(x, y, w, h);
@@ -72,12 +66,26 @@ export function drawTile(c: CanvasRenderingContext2D, t: string, pal: Palette, x
       }
       break;
     }
-    case '^': case '>': {
-      floor(c, pal, x, y, w, h, t === '>' ? '#ffffff' : css(pal.accent));
-      c.strokeStyle = t === '>' ? css(pal.accent) : 'rgba(10,10,60,.85)';
-      c.lineWidth = Math.max(1.5, u * 0.11);
-      if (t === '^') chevron(c, cx, cy, u * 0.26);
-      else { chevron(c, cx - u * 0.16, cy, u * 0.24); chevron(c, cx + u * 0.16, cy, u * 0.24); }
+    case '^': {
+      // jump pad: an arrow pointing up
+      floor(c, pal, x, y, w, h, css(pal.accent));
+      c.fillStyle = '#0a0a3c';
+      const a = u * 0.36, s = u * 0.11;
+      c.beginPath();
+      c.moveTo(cx, cy - a); c.lineTo(cx + a * 0.8, cy - a * 0.1); c.lineTo(cx + s, cy - a * 0.1); c.lineTo(cx + s, cy + a);
+      c.lineTo(cx - s, cy + a); c.lineTo(cx - s, cy - a * 0.1); c.lineTo(cx - a * 0.8, cy - a * 0.1);
+      c.closePath(); c.fill();
+      break;
+    }
+    case '>': {
+      // boost pad: an arrow pointing forward (the driving direction, to the right here)
+      floor(c, pal, x, y, w, h, '#ffffff');
+      c.fillStyle = css(pal.block) === '#ffffff' ? '#0a0a3c' : '#e0188c';
+      const a = Math.min(w * 0.4, h * 0.42), s = Math.min(h * 0.12, a * 0.3);
+      c.beginPath();
+      c.moveTo(cx + a, cy); c.lineTo(cx + a * 0.1, cy - a * 0.8); c.lineTo(cx + a * 0.1, cy - s); c.lineTo(cx - a, cy - s);
+      c.lineTo(cx - a, cy + s); c.lineTo(cx + a * 0.1, cy + s); c.lineTo(cx + a * 0.1, cy + a * 0.8);
+      c.closePath(); c.fill();
       break;
     }
     case 'i': {

@@ -4,7 +4,7 @@ Players build their own tracks and drive them to their own music. Entry: `+ NEW 
 
 ## What the player does
 
-1. **Build.** The track is shown from above, driving direction to the right: five lanes, three columns to a beat, twelve to a bar. Lighter columns are beat rows.
+1. **Build.** The track is shown from above, driving direction to the right: five lanes, three columns to a beat, twelve to a bar. Lighter columns are beat rows. A new track is one empty section (four bars); `+ SECTION` after the finish line adds another. Building starts with single blocks.
    - **Figures** are whole beats and always land on a beat: jump, wall, spikes, jump pad, long jump, zigzag, skyway, boost jump and so on. Tap a beat to place one; one-sided figures face the side that was tapped.
    - **Blocks** are single tiles, painted with a finger: floor, gap, block, spikes, the four gems, jump pad, boost, ice, moving road, rail. Painting a tile onto itself wipes it back to floor. `FLIP ZONE` toggles a gravity-flip bar.
    - Two fingers (or the `MOVE` tool, the strip above the lanes, the minimap) scroll. Undo and redo keep 80 steps.

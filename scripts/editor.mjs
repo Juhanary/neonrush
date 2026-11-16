@@ -55,8 +55,17 @@ await sleep(500);
 res.open = await ed(() => ({ mode: window.__game.mode, visible: !document.getElementById('editor').hidden, menuHidden: document.getElementById('menu').hidden }));
 await p.screenshot({ path: `${out}/editor-1-new.png` });
 
+// a new track is one section; add a second one with the button after the finish line
+res.barsAtStart = await ed(() => window.__game.editor.lv.rows.length / 12);
+await ed(() => window.__game.editor.addSection());
+await sleep(300);
+await p.screenshot({ path: `${out}/editor-1c-section.png` });
+res.barsAfterAdd = await ed(() => window.__game.editor.lv.rows.length / 12);
+await ed(() => { const e = window.__game.editor; e.setBars(16); e.scrollTo(-20); });
+await sleep(200);
 // 2. a figure on bar 1 beat 3, then single tiles painted with a drag
 await p.screenshot({ path: `${out}/editor-1b-figures.png` });
+await p.tap('#edTabFigs'); await sleep(150);
 res.pickHop = await pick('JUMP');
 let c = await cell(7, 2);
 await p.touchscreen.tap(c.x, c.y);

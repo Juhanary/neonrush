@@ -10,7 +10,7 @@
   user-select: text; -webkit-user-select: text; touch-action: manipulation; outline: none; }
 #edName:focus { border-color: var(--a); box-shadow: 0 0 12px var(--a); }
 #edInfo { flex: 0 1 auto; font-size: 9px; letter-spacing: .1em; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#edGrid { flex: 1 1 0; min-height: 110px; width: 100%; border-radius: 10px; touch-action: none; display: block;
+#edGrid { flex: 1 1 0; min-height: 96px; width: 100%; border-radius: 10px; touch-action: none; display: block;
   border: 1.5px solid color-mix(in srgb, var(--a) 60%, transparent); box-shadow: 0 0 16px color-mix(in srgb, var(--a) 35%, transparent); }
 #edStatus { flex: none; min-height: 22px; padding: 3px 10px; border-radius: 8px; text-align: left; background: rgba(10, 10, 50, .6);
   font: 600 12px/1.3 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; letter-spacing: 0; color: rgba(255, 255, 255, .85);
@@ -19,18 +19,18 @@
 #edStatus.busy { color: #fff; animation: edBusy .7s ease-in-out infinite alternate; }
 @keyframes edBusy { from { opacity: .5; } to { opacity: 1; } }
 #editor.working #edAuto, #editor.working #edCheck, #editor.working #edTest, #editor.working #edUndo, #editor.working #edRedo { opacity: .35; pointer-events: none; }
-#edTools { flex: none; display: flex; gap: 6px; align-items: stretch; }
-#edTabs { flex: none; display: flex; flex-direction: column; gap: 4px; }
-#edTabs button { flex: 1; padding: 0 10px; min-height: 26px; border-radius: 8px; font-size: 10px; font-weight: 700; letter-spacing: .14em;
+#edTools { flex: none; display: flex; gap: 10px; align-items: stretch; padding-top: 4px; }
+#edTabs { flex: none; display: flex; flex-direction: column; gap: 6px; }
+#edTabs button { flex: 1; padding: 0 14px; min-height: 30px; border-radius: 9px; font-size: 11px; font-weight: 700; letter-spacing: .14em;
   background: rgba(10, 10, 50, .5); border: 1.5px solid color-mix(in srgb, var(--a) 45%, transparent); }
 #edTabs button.on { color: #0a0a3c; background: var(--a); border-color: var(--a); box-shadow: 0 0 12px var(--a); }
-#edPalette { flex: 1; min-width: 0; display: flex; gap: 5px; overflow-x: auto; touch-action: pan-x; padding: 1px 1px 3px; scrollbar-width: none; }
+#edPalette { flex: 1; min-width: 0; display: flex; gap: 9px; overflow-x: auto; touch-action: pan-x; padding: 2px 2px 4px; scrollbar-width: none; }
 #edPalette::-webkit-scrollbar { display: none; }
-#edPalette button { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 5px 3px; border-radius: 9px;
+#edPalette button { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 7px 5px; border-radius: 10px; min-width: 62px;
   background: rgba(10, 10, 50, .55); border: 1.5px solid rgba(255, 255, 255, .18); }
 #edPalette button.on { border-color: #fff; box-shadow: 0 0 12px var(--a), inset 0 0 10px color-mix(in srgb, var(--a) 50%, transparent); }
 #edPalette canvas { display: block; border-radius: 4px; }
-#edPalette span { font-size: 8px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+#edPalette span { font-size: 9px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
 
 #edPanel { position: absolute; inset: 0; display: flex; justify-content: center; background: rgba(4, 4, 26, .8); overflow-y: auto; touch-action: pan-y;
   padding: calc(8px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); }
@@ -56,7 +56,7 @@
 #edDelete { margin-right: auto; } .ed-head { justify-content: space-between; } .ed-head .big { padding: 8px 22px; } #edDelete.armed { color: #fff; background: #d81e3c; border-color: #ff7a8a; box-shadow: 0 0 14px #ff2a4a; }
 @media (orientation: portrait) { #edTop { flex-wrap: wrap; } #edName { flex-basis: 50%; } #edGrid { flex: 0 1 44vh; } #editor { justify-content: flex-start; } }
 @media (max-width: 700px) { #edInfo { display: none; } #edTop .ghost, #edTop .big { padding: 0 8px; font-size: 10px; letter-spacing: .06em; } }
-@media (max-height: 360px) { #edPalette span { display: none; } #edTop, #edTop .icon, #edTop .ghost, #edTop .big, #edName { min-height: 34px; height: 34px; } #edTop .icon { width: 34px; } }
+@media (max-height: 360px) { #edTop, #edTop .icon, #edTop .ghost, #edTop .big, #edName { min-height: 34px; height: 34px; } #edTop .icon { width: 34px; } }
 
 /* menu: the player's own tracks */
 .card .pen { position: absolute; right: 6px; top: 6px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; font: 15px system-ui, sans-serif;
