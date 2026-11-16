@@ -355,4 +355,5 @@ create view public.top_tracks with (security_invoker = true) as
   where t.status in ('submitted', 'review') and t.rating_count >= r.top_min_ratings
   order by score desc, t.rating_count desc;
 
+revoke all on public.global_board, public.level_board, public.top_tracks from public, anon, authenticated; -- Supabase grants everything by default
 grant select on public.global_board, public.level_board, public.top_tracks to anon, authenticated;
