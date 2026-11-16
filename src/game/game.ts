@@ -11,6 +11,7 @@ import { detectLang } from '../ui/i18n';
 import { Ui } from '../ui/ui';
 import { CustomStore } from './custom-store';
 import { Input } from './input';
+import { coinsFor, playerStats } from './profile';
 import { loadSave, storeSave } from './storage';
 import { Tracks } from './tracks';
 
@@ -31,6 +32,8 @@ export class Game {
   private doneShown = false;
   private coast = 0;
   private attempts = 0;
+  /** Coins the run that just finished earned. */
+  private gained = 0;
   private save = loadSave();
   private audio = new GameAudio();
   private input = new Input();
@@ -212,6 +215,7 @@ export class Game {
     this.ui.hideBanner();
     this.ui.setFlip(false, 0);
     this.ui.setHype(0);
+    this.ui.setStats(playerStats(this.save, this.levels.map((l) => l.def.id)));
     this.ui.showMenu(this.levels.map((l) => {
       const pal = PALETTES[l.def.world % PALETTES.length];
       return {
@@ -300,7 +304,8 @@ export class Game {
     }
     this.attempts++;
     const id = this.lvl.def.id;
-    this.save.attempts[id] = (this.save.attempts[id] ?? 0) + 1;
+    // every run counts, practice too; a test drive from the editor is not a run
+    if (!this.custom?.test) { this.save.attempts[id] = (this.save.attempts[id] ?? 0) + 1; storeSave(this.save); }
     this.ui.setAttempt(this.attempts);
     this.ui.setHud(0, 0, this.lvl.gemCount);
     // the song starts at the beat the ship stands on, so a checkpoint restart resumes mid-song
@@ -403,7 +408,10 @@ export class Game {
           this.save.best[id] = 100;
           this.save.done[id] = true;
           this.save.gems[id] = Math.max(this.save.gems[id] ?? 0, this.sim.collected.size);
-          this.save.stars[id] = Math.max(this.save.stars[id] ?? 0, this.stars());
+          const had = this.save.stars[id] ?? 0;
+          this.save.stars[id] = Math.max(had, this.stars());
+          // only official tracks pay
+          this.gained = this.custom ? 0 : coinsFor(this.save.stars[id] - had);
         }
         this.fire = 0;
         this.ui.hideBanner();
@@ -468,7 +476,7 @@ export class Game {
         this.menuMusic();
         this.ui.showDone({
           attempts: this.attempts, gems: this.sim.collected.size, gemTotal: this.lvl.gemCount, stars: this.stars(),
-          hasNext: !this.custom && this.idx < this.levels.length - 1, practice: this.prac, test: this.custom?.test,
+          hasNext: !this.custom && this.idx < this.levels.length - 1, practice: this.prac, test: this.custom?.test, coins: this.prac ? 0 : this.gained,
         });
       }
     }

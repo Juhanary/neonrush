@@ -27,7 +27,7 @@ export class Ui {
   private barFill = $('bar').querySelector('i') as HTMLElement;
   private callout = $('callout'); private banner = $('banner'); private danger = $('danger'); private tap = $('tap'); private lastDanger = 0; private bar = $('bar'); private pct = $('pct'); private attempt = $('attempt'); private gems = $('gems'); private hint = $('hint');
   private stick = $('stick'); private nub = this.stick.querySelector('i') as HTMLElement;
-  private lastPct = -1; private lastGems = ''; private hintTimer = 0;
+  private lastPct = -1; private lastGems = ''; private hintTimer = 0; private lastStars = -1;
   private lang: Lang = 'en'; private muted = false; private attemptN = 1; private practice = false;
   private guideP = $('guide'); private prac = $('prac'); private ticks = $('ticks'); private lastCp = -1;
 
@@ -130,6 +130,18 @@ export class Ui {
     document.documentElement.style.setProperty('--b', css2);
   }
 
+  /** The player's totals in the corner of the menu. The numbers pop when they have grown since they were last shown. */
+  setStats(st: { stars: number; starMax: number; coins: number; attempts: number }): void {
+    $('psStars').textContent = String(st.stars);
+    $('psStarMax').textContent = '/' + st.starMax;
+    $('psCoins').textContent = String(st.coins);
+    $('psTries').textContent = String(st.attempts);
+    const box = $('pstats');
+    box.classList.remove('bump');
+    if (this.lastStars >= 0 && st.stars > this.lastStars) { void box.offsetWidth; box.classList.add('bump'); }
+    this.lastStars = st.stars;
+  }
+
   showMenu(cards: LevelCard[], custom: CustomCard[] = []): void {
     const box = $('levels');
     box.textContent = '';
@@ -172,13 +184,14 @@ export class Ui {
     this.menu.hidden = true; this.pauseP.hidden = true; this.doneP.hidden = true; this.hud.hidden = false;
   }
   showPause(): void { this.pauseP.hidden = false; }
-  showDone(stats: { attempts: number; gems: number; gemTotal: number; stars: number; hasNext: boolean; practice: boolean; test?: boolean }): void {
+  showDone(stats: { attempts: number; gems: number; gemTotal: number; stars: number; hasNext: boolean; practice: boolean; test?: boolean; /** Coins this run earned. */ coins?: number }): void {
     document.querySelectorAll('#stars span').forEach((el, i) => el.classList.toggle('on', i < stats.stars));
     $('stars').hidden = stats.practice;
     $('doneTitle').textContent = this.t(stats.test ? 'ed.testDone' : stats.practice ? 'practiceDone' : 'complete');
     $('doneNote').textContent = this.t(stats.test ? 'ed.testNote' : stats.practice ? 'practiceNote' : 'starRule');
     $('againBtn').textContent = this.t(stats.practice && !stats.test ? 'playReal' : 'again');
-    $('doneStats').innerHTML = `${this.t('attempts')} <b>${stats.attempts}</b><br>${this.t('gems')} <b>&#9670; ${stats.gems}/${stats.gemTotal}</b>`;
+    $('doneStats').innerHTML = `${this.t('attempts')} <b>${stats.attempts}</b><br>${this.t('gems')} <b>&#9670; ${stats.gems}/${stats.gemTotal}</b>`
+      + (stats.coins ? `<br>${this.t('coins')} <b class="gain"><i class="coinIcon"></i> +${stats.coins}</b>` : '');
     $('nextBtn').hidden = !stats.hasNext;
     this.doneP.hidden = false; this.hud.hidden = true;
   }
