@@ -8,7 +8,9 @@ import { PALETTES } from '../render/palette';
 import { View, type Pose } from '../render/view';
 import { Editor } from '../editor/editor';
 import { detectLang } from '../ui/i18n';
+import { AccountPanel } from '../ui/account-panel';
 import { Ui } from '../ui/ui';
+import { Account, SupabaseBackend, type Backend } from '../net/account';
 import { CustomStore } from './custom-store';
 import { Input } from './input';
 import { coinsFor, playerStats } from './profile';
@@ -53,6 +55,8 @@ export class Game {
   private store = new CustomStore();
   private tracks = new Tracks(this.store, this.audio);
   private editor: Editor;
+  private account: Account;
+  private accPanel: AccountPanel;
   private custom?: { data: CustomLevel; level: Level; /** A test drive from the editor: nothing is recorded and "back" returns there. */ test: boolean; track?: MusicTrack };
   /** Bumped whenever something else is started, so a track whose music was still loading does not start late. */
   private loading = 0;
@@ -94,6 +98,7 @@ export class Game {
         this.save.lang = (this.save.lang ?? detectLang()) === 'fi' ? 'en' : 'fi';
         storeSave(this.save);
         this.ui.setLang(this.save.lang);
+        this.account.onChange?.();
         if (this.mode === 'menu') this.toMenu();
       },
     });
@@ -104,8 +109,19 @@ export class Game {
       exit: () => this.toMenu(),
       changed: (id) => this.forget(CUSTOM_PREFIX + id),
     });
+    // the account; a test page may hand in a stand-in server before the game starts
+    const stub = location.search.includes('debug') ? (window as { __backend?: Backend }).__backend : undefined;
+    this.account = new Account(stub ?? new SupabaseBackend(), this.save, storeSave);
+    const menuEl = document.getElementById('menu')!, accBtn = document.getElementById('accBtn')!;
+    this.accPanel = new AccountPanel(this.account, (k) => this.ui.t(k), () => { menuEl.hidden = false; });
+    this.account.onChange = () => { this.accPanel.render(); accBtn.textContent = this.accPanel.label(); };
+    accBtn.addEventListener('click', () => { menuEl.hidden = true; this.accPanel.show(); });
+    // progress leaves the device when the menu comes back and when the game goes to the background
+    document.addEventListener('visibilitychange', () => { if (document.hidden) void this.account.sync(); });
+    void this.account.start();
     this.ui.setMuted(this.save.muted);
     this.ui.setLang(this.save.lang ?? detectLang());
+    this.account.onChange();
     this.practice = !!this.save.practiceOn;
     this.ui.setPractice(this.practice);
     this.input.attach(surface);
@@ -216,6 +232,7 @@ export class Game {
     this.ui.setFlip(false, 0);
     this.ui.setHype(0);
     this.ui.setStats(playerStats(this.save, this.levels.map((l) => l.def.id)));
+    void this.account.sync();
     this.ui.showMenu(this.levels.map((l) => {
       const pal = PALETTES[l.def.world % PALETTES.length];
       return {

@@ -168,3 +168,32 @@ h2 { margin: 0 0 6px; font-size: clamp(24px, 6vw, 48px); font-weight: 900; font-
 .stats .gain { color: #ffd23a; text-shadow: 0 0 12px #ffb400; }
 @media (max-height: 430px) { #pstats > span { min-width: 50px; padding: 5px 7px 4px; } #pstats b { font-size: 13px; } }
 @media (orientation: portrait) { #pstats { position: static; } }
+/* account */
+#account { gap: 8px; }
+#accBody { display: flex; flex-direction: column; align-items: center; gap: 9px; width: min(440px, 88vw); }
+#accBody input { width: 100%; padding: 12px 14px; border-radius: 12px; font: 700 16px/1.2 inherit; letter-spacing: .06em; text-align: center;
+  color: #fff; background: rgba(10, 10, 50, .7); border: 2px solid color-mix(in srgb, var(--a) 70%, transparent); outline: none;
+  box-shadow: inset 0 0 14px color-mix(in srgb, var(--b) 18%, transparent); user-select: text; -webkit-user-select: text; }
+#accBody input:focus { border-color: var(--a); box-shadow: 0 0 16px color-mix(in srgb, var(--a) 55%, transparent), inset 0 0 14px color-mix(in srgb, var(--b) 18%, transparent); }
+#acc-code { font-size: 26px !important; letter-spacing: .5em !important; }
+#accBody .big { width: 100%; }
+#accBody button:disabled { opacity: .5; }
+.accNote { margin: 0; font-size: 12px; letter-spacing: .06em; line-height: 1.45; opacity: .9; }
+.accErr { margin: 0; font-size: 12px; font-weight: 700; color: #ff6b8b; text-shadow: 0 0 10px #ff2a5f; }
+.accSync { margin: 0; font-size: 11px; letter-spacing: .06em; opacity: .8; }
+.accSync.warn { color: #ffd23a; opacity: 1; }
+.accNick { font-size: clamp(24px, 5vw, 38px); font-weight: 900; font-style: italic; letter-spacing: .06em; text-shadow: 0 0 14px var(--a), 0 0 34px var(--a); }
+.accMail { margin: -6px 0 0; font-size: 10px; letter-spacing: .1em; opacity: .6; }
+.accStats { display: flex; border-radius: 12px; background: rgba(10, 10, 50, .55); border: 1.5px solid color-mix(in srgb, var(--a) 70%, transparent); }
+.accStats > span { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 76px; padding: 8px 10px 6px; }
+.accStats > span + span { border-left: 1px solid rgba(255, 255, 255, .16); }
+.accStats b { display: flex; align-items: center; gap: 5px; font-size: 20px; font-weight: 900; line-height: 1; }
+.accStats small { font-size: 8px; letter-spacing: .22em; opacity: .75; }
+.accStats i { font-style: normal; }
+.accStats .star i { color: #ffd23a; text-shadow: 0 0 8px #ffb400, 0 0 18px #ff8a00; }
+.accStats .crown i { color: #ff7af0; text-shadow: 0 0 8px #ff3ce6, 0 0 18px #c41aff; }
+#accBtn { border-color: var(--b); box-shadow: 0 0 12px color-mix(in srgb, var(--b) 45%, transparent); }
+@media (max-height: 430px) {
+  #account { justify-content: flex-start; overflow-y: auto; } #account h2 { font-size: 22px; }
+  #accBody { gap: 6px; } #accBody input { padding: 8px 12px; } #acc-code { font-size: 20px !important; } .accNick { font-size: 22px; }
+}
