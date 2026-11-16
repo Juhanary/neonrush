@@ -90,6 +90,37 @@ await p.screenshot({ path: `${out}/editor-2-built.png` });
 await p.tap('#edUndo'); await sleep(150);
 res.afterUndo = await status();
 
+// 2b. one gem tool with three heights; a column holds one gem; the check names a gem that cannot be had
+c = await cell(12, 2); await p.touchscreen.tap(c.x, c.y);                 // LOW on a beat row
+res.gemButtons = await p.$$eval('#edPalette button', (bs) => bs.map((x) => x.querySelector('span').textContent + (x.classList.contains('on') ? '*' : '')).join(' '));
+res.pickMid = await pick('MID');
+c = await cell(7, 2); await p.touchscreen.tap(c.x, c.y);                  // MID over the gap: the gap stays
+c = await cell(18, 1); await p.touchscreen.tap(c.x, c.y);
+res.pickHigh = await pick('HIGH');
+c = await cell(18, 3); await p.touchscreen.tap(c.x, c.y);                 // same column: the gem moves here, at the new height
+await ed(() => window.__game.editor.center(36)); await sleep(200);
+c = await cell(36, 2); await p.touchscreen.tap(c.x, c.y);                 // nothing to climb here: out of reach
+await sleep(200);
+res.gemRows = await ed(() => { const r = window.__game.editor.lv.rows; return [7, 12, 18, 36].map((i) => i + ':' + r[i]).join(' '); });
+res.gemHelp = await status();
+await p.screenshot({ path: `${out}/editor-2b-gems.png` });
+await p.tap('#edCheck');
+await sleep(400);
+await waitStatus(/^[✓✖⚠]/);
+res.gemCheck = await status();
+res.gemMissed = await ed(() => window.__game.editor.missGem);
+await sleep(200);
+await p.screenshot({ path: `${out}/editor-2c-gem-missed.png` });
+c = await cell(36, 2); await p.touchscreen.tap(c.x, c.y);                 // tapping a gem with its own height takes it away
+await sleep(200);
+res.gemGone = await ed(() => window.__game.editor.lv.rows[36]);
+await p.tap('#edCheck');
+await sleep(400);
+await waitStatus(/^[✓✖⚠]/);
+res.gemCheck2 = await status();
+await ed(() => window.__game.editor.scrollTo(-20));
+await sleep(200);
+
 // 3. music: the file is analysed and sets tempo, speed and length
 await p.tap('#edSet');
 await sleep(200);

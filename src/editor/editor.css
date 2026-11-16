@@ -28,6 +28,9 @@
 #edPalette button { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 7px 5px; border-radius: 10px; min-width: 62px;
   background: rgba(10, 10, 50, .55); border: 1.5px solid rgba(255, 255, 255, .18); }
 #edPalette button.on { border-color: #fff; box-shadow: 0 0 12px var(--a), inset 0 0 10px color-mix(in srgb, var(--a) 50%, transparent); }
+/* the heights of the gem tool: a group that belongs to the GEM button before it */
+#edPalette button.sub { min-width: 54px; margin-left: -4px; background: color-mix(in srgb, var(--a) 16%, rgba(10, 10, 50, .7)); border-style: dashed; }
+#edPalette button.sub.on { border-style: solid; }
 #edPalette canvas { display: block; border-radius: 4px; }
 #edPalette span { font-size: 9px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
 

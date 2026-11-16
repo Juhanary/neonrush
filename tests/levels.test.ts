@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BAR_ROWS, CFG } from '../src/core/config';
-import { Level } from '../src/core/level';
+import { Level, gemLanes } from '../src/core/level';
 import { LEVELS } from '../src/core/levels';
 import { Sim } from '../src/core/sim';
+import { solveGems } from '../src/core/solve';
 import { solve } from './bot';
 
 describe('levels', () => {
@@ -40,6 +41,20 @@ describe('rhythm', () => {
         const beatRow = r % CFG.rowsPerBeat === 0;
         if (/[\^>oO]/.test(row)) expect(beatRow, `row ${r} "${row}" (bar ${Math.floor(r / BAR_ROWS) + 1})`).toBe(true);
       });
+    });
+  }
+});
+
+describe('gems', () => {
+  for (const def of LEVELS) {
+    const level = new Level(def);
+    it(`${def.name}: no row holds two gems`, () => {
+      def.rows.forEach((row, r) => expect(gemLanes(row).length, `row ${r} "${row}" (bar ${Math.floor(r / BAR_ROWS) + 1})`).toBeLessThan(2));
+    });
+    it(`${def.name}: every gem can be collected in one run, pressing jump only on the beat`, () => {
+      const res = solveGems(level, true);
+      expect(res.gems).toBe(level.gemCount);
+      expect(res.ok, res.missed ? `gem in row ${res.missed.row} lane ${res.missed.lane} (bar ${Math.floor(res.missed.row / BAR_ROWS) + 1})` : 'no way to the finish with all the gems').toBe(true);
     });
   }
 });

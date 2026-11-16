@@ -13,13 +13,14 @@ Neonrush is a rhythm game: the road is the sheet music. Work in bars and beats, 
 
 Tempo is not chosen, it follows from speed: `BPM = speed × 5` (24 m/s = 120 BPM, 33 m/s = 165 BPM). Speeds so far: 24, 26, 28, 29, 30, 31, 32, 33.
 
-Tile characters: `.` gap, `=` floor, `#` block, `^` jump pad, `>` boost pad, `o` gem, `O` high gem, `*` gem over a gap, `+` gem on a pad arc, `m` moving road, `i` ice, `|` rail, `x` spikes. `n` air block (floats over floor: drive under, never touch; editor tracks only so far).
+Tile characters: `.` gap, `=` floor, `#` block, `^` jump pad, `>` boost pad, gems (one kind, three heights): `o` on the road, `O` at jump height over floor, `*` at jump height over a gap, `@` high over floor, `+` high over a gap, `m` moving road, `i` ice, `|` rail, `x` spikes. `n` air block (floats over floor: drive under, never touch; editor tracks only so far).
 
 ## Rules (the tests enforce the ones marked T)
 
 1. **Take off on the beat.** A gap, or a block to jump, starts on the row right after a beat row. (T: a bot that may only press jump within ±0.17 beat of a beat must finish the track.)
 2. **A jump is longer than a beat** (1.1 beats at 120 BPM, 1.5 at 165). The beat right after a take-off is never another take-off. Leave two beats between jumps.
-3. **Pads, boosts and floor gems sit on beat rows** (T). Air gems (`*`, `+`) go in the rows after the beat row.
+3. **Pads, boosts and gems over floor (`o`, `O`) sit on beat rows** (T). Gems in the air over a gap (`*`, `+`) and high gems over floor (`@`) go in the rows after the beat row of the take-off.
+   **Gems**: one kind at three heights. On the road (0.9 m) it is driven through. At jump height (2.3 m) it needs a jump. High up (6 m, collected from 3.3 m) it is out of reach of a jump from the road: it takes a jump from the top of a block (1 to 3 rows after the take-off), a jump pad or a flip zone. **A row holds at most one gem** (T), and **a bot that jumps only on the beat must collect every gem of the track in one run** (T, `solveGems`): a gem right where a jump comes down has to be at jump height, not on the road.
 4. **Walls with an opening sit on beat rows**, so the ship passes through on the beat. Give at least two beats to cross two lanes.
 5. **An idea lasts whole bars.** Flip zones start and end on bar lines (T) and last two bars.
 6. **Jump pads land straight ahead with no steering**, even when entered late (T). Use the `pad()` helper: 4 gap rows at 24 to 26 m/s, 5 above that.

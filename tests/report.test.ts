@@ -41,9 +41,9 @@ it.skipIf(!process.env.REPORT)('level report', () => {
       const where = `bar ${Math.floor(r / BAR_ROWS) + 1} beat ${Math.floor((r % BAR_ROWS) / 3) + 1} row ${r}`;
       const beatRow = r % CFG.rowsPerBeat === 0;
       if (/[\^>oO]/.test(row) && !beatRow) warn.push(`${where}: pad or gem off the beat row "${row}"`);
-      if (!beatRow && [...row].some(isGem) && r % 3 === 1 && !/[*+]/.test(row)) warn.push(`${where}: gem one row after the beat`);
+      if (!beatRow && [...row].some(isGem) && r % 3 === 1 && !/[*+@]/.test(row)) warn.push(`${where}: gem one row after the beat`);
       // a gap or wall that starts on a beat row forces an early take-off
-      const solid = (s: string) => /[=oOi|m^>x]/.test(s);
+      const solid = (s: string) => /[=oO@i|m^>xn]/.test(s);
       if (beatRow && r > 0 && !solid(row) && solid(level.rows[r - 1])) warn.push(`${where}: gap starts ON the beat row; start it one row later so the take-off is on the beat`);
       const prev = r > 0 ? level.rows[r - 1] : '';
       // inside a flip zone a spiked floor is a different idea (do not touch the floor), so these rules do not apply

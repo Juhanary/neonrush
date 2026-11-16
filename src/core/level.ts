@@ -3,9 +3,12 @@ import { BAR_ROWS, BEAT_LEN, CFG, ROAD_W } from './config';
 /**
  * Level format: one string per row, row 0 is nearest the start, one char per lane.
  *   .  gap            =  floor          #  block (obstacle, can be landed on)
- *   ^  jump pad       >  boost pad      o  floor + gem
- *   O  floor + high gem (needs a jump)  *  gap + gem in the air
- *   +  gap + gem high on a jump-pad arc
+ *   ^  jump pad       >  boost pad
+ *   o  floor + gem on the ground        O  floor + gem at jump height     @  floor + gem high up
+ *                                       *  gap + gem at jump height       +  gap + gem high up
+ *      There is one kind of gem, at three heights: on the ground (driven through), at jump height
+ *      (needs a jump) and high up (needs a jump from the top of a block, a jump pad or a flip zone).
+ *      A row holds at most one gem, so every gem of a track can be collected in one run.
  *   m  moving road: slides sideways in a travelling wave
  *   i  ice: steering has very little grip
  *   |  rail: a narrow beam in the middle of the lane
@@ -62,7 +65,7 @@ export class Level {
    */
   private findCheckpoints(): Checkpoint[] {
     const out: Checkpoint[] = [{ row: 0, x: 0, z: 2 }];
-    const plain = (row: number, lane: number) => { const t = this.tile(row, lane); return t === '=' || t === 'o' || t === 'O' || t === 'i' || t === '|'; };
+    const plain = (row: number, lane: number) => { const t = this.tile(row, lane); return t === '=' || t === 'o' || t === 'O' || t === '@' || t === 'i' || t === '|'; };
     let last = 0, boost = -99;
     for (let row = 1; row < this.length - 4; row++) {
       if (this.rows[row - 1].includes('>')) boost = row - 1;
@@ -107,7 +110,7 @@ export class Level {
     if (o !== undefined && o >= '0' && o <= '3') return +o;
     if (b === 0) return 1;
     let busy = 0;
-    for (let r = b * BAR_ROWS; r < (b + 1) * BAR_ROWS && r < this.length; r++) if (/[^=oO]/.test(this.rows[r])) busy++;
+    for (let r = b * BAR_ROWS; r < (b + 1) * BAR_ROWS && r < this.length; r++) if (/[^=oO@]/.test(this.rows[r])) busy++;
     return busy <= 2 ? 1 : busy <= 7 ? 2 : 3;
   }
 
@@ -155,13 +158,60 @@ export class Level {
   }
 }
 
+/** The three heights a gem can hang at. */
+export const GEM_LOW = 0, GEM_MID = 1, GEM_HIGH = 2;
+export type GemLevel = 0 | 1 | 2;
+
+/** Height step of a gem tile, or -1 when the tile holds no gem. */
+export function gemLevel(t: string): GemLevel | -1 {
+  return t === 'o' ? GEM_LOW : t === 'O' || t === '*' ? GEM_MID : t === '@' || t === '+' ? GEM_HIGH : -1;
+}
 export function isGem(t: string): boolean {
-  return t === 'o' || t === 'O' || t === '*' || t === '+';
+  return gemLevel(t) >= 0;
 }
+/** Centre of the gem above the road. */
 export function gemHeight(t: string): number {
-  return t === 'o' ? 0.9 : t === '+' ? 6 : 2.3;
+  const g = gemLevel(t);
+  return g === GEM_LOW ? 0.9 : g === GEM_HIGH ? 6 : 2.3;
 }
-/** Vertical pickup tolerance: pad-arc gems are forgiving because the arc varies with speed. */
+/**
+ * Vertical pickup tolerance. High gems are forgiving because the arcs that reach them (a jump off a block,
+ * a jump pad) vary with speed; the lowest point that still collects one (3.3 m) is out of reach of a jump
+ * from the road (2.5 m).
+ */
 export function gemReach(t: string): number {
-  return t === '+' ? 2.2 : 1.15;
+  return gemLevel(t) === GEM_HIGH ? 2.2 : 1.15;
+}
+/** What is left of a tile when its gem is taken away: floor or gap. */
+export function gemGround(t: string): string {
+  return t === '*' || t === '+' ? '.' : isGem(t) ? '=' : t;
+}
+/**
+ * The tile for a gem at height `g` put on tile `under`: a gap stays a gap under a gem in the air, anything
+ * else becomes floor. A gem on the ground always has floor under it.
+ */
+export function gemTile(g: GemLevel, under: string): string {
+  const gap = under === '.' || under === '*' || under === '+';
+  return g === GEM_LOW ? 'o' : g === GEM_MID ? (gap ? '*' : 'O') : gap ? '+' : '@';
+}
+/** Lanes of the gems in a row. */
+export function gemLanes(row: string): number[] {
+  const out: number[] = [];
+  for (let l = 0; l < row.length; l++) if (isGem(row[l])) out.push(l);
+  return out;
+}
+/**
+ * Keep one gem in every row: of several, the one nearest the gem before it (the middle lane at first)
+ * stays and the others turn back into floor or gap. Tracks stored before the rule existed go through this.
+ */
+export function oneGemPerRow(rows: string[]): string[] {
+  let last = 2;
+  return rows.map((row) => {
+    const lanes = gemLanes(row);
+    if (!lanes.length) return row;
+    let keep = lanes[0];
+    for (const l of lanes) if (Math.abs(l - last) < Math.abs(keep - last)) keep = l;
+    last = keep;
+    return lanes.length === 1 ? row : [...row].map((t, l) => (l !== keep && isGem(t) ? gemGround(t) : t)).join('');
+  });
 }

@@ -10,9 +10,9 @@ import {
   FLIP_FROM, MAX_BARS, MAX_BPM, MAX_SPEED, MIN_BARS, MIN_BPM, MIN_SPEED, barsOf, blankLevel, flipRanges, musicBars, musicStart, toDef, type CustomLevel,
 } from '../core/custom';
 import { F } from '../core/figures';
-import { Level } from '../core/level';
+import { GEM_HIGH, GEM_LOW, GEM_MID, Level, gemGround, gemLanes, gemLevel, gemTile, type GemLevel } from '../core/level';
 import { lint, type Issue } from '../core/rules';
-import { Solver, type SolveOptions } from '../core/solve';
+import { GEM_STALL, Solver, type SolveOptions } from '../core/solve';
 import type { CustomStore } from '../game/custom-store';
 import type { Tracks } from '../game/tracks';
 import { PALETTES, type Palette } from '../render/palette';
@@ -40,12 +40,13 @@ export interface EditorHost {
   changed(id: string): void;
 }
 
-type Tool = { kind: 'pan' } | { kind: 'tile'; t: string } | { kind: 'flip' };
+type Tool = { kind: 'pan' } | { kind: 'tile'; t: string } | { kind: 'gem' } | { kind: 'flip' };
 interface Snap { rows: string[]; flipRows: number[] }
 type Drag =
   | { kind: 'pan'; x: number; scroll: number }
   | { kind: 'map' }
   | { kind: 'paint'; t: string; row: number; lane: number }
+  | { kind: 'gem'; on: boolean; row: number; lane: number }
   | { kind: 'flip'; on: boolean; row: number }
   | null;
 
@@ -62,9 +63,12 @@ const ADD_W = 104;
 /** Palette icons are drawn in a 34-unit box and shown this much larger. */
 const ICON = 1.3;
 const TILES: [string, string][] = [
-  ['=', 'floor'], ['.', 'gap'], ['#', 'block'], ['x', 'spike'], ['o', 'gem'], ['O', 'gemHigh'], ['*', 'gemAir'], ['+', 'gemPad'],
+  ['=', 'floor'], ['.', 'gap'], ['#', 'block'], ['x', 'spike'], ['o', 'gem'],
   ['^', 'pad'], ['>', 'boost'], ['n', 'air'], ['i', 'ice'], ['m', 'move'], ['|', 'rail'],
 ];
+/** The one gem tool ('o' in TILES) and its three heights. */
+const GEM = 'o';
+const GEM_KEYS = ['gemLow', 'gemMid', 'gemHigh'];
 /** Intensity per bar while a song is auditioned in the editor: every layer of the arrangement within eight bars. */
 const AUDITION = '11223333';
 
@@ -82,6 +86,8 @@ export class Editor {
   private sig = '';
   private undo: Snap[] = []; private redo: Snap[] = [];
   private tool: Tool = { kind: 'tile', t: '#' };
+  /** Height the gem tool places gems at. */
+  private gemH: GemLevel = GEM_LOW;
   private cw = ZOOMS[0];
   private scroll = -20;
   private ptrs = new Map<number, { x: number; y: number }>();
@@ -89,6 +95,8 @@ export class Editor {
   private issues: Issue[] = [];
   private issueAt = 0;
   private stuckRow = -1;
+  /** The gem the bot could not collect in the last check. */
+  private missGem: { row: number; lane: number } | null = null;
   private note = '';
   private noteGood = false;
   /** Bumped on every change, so a running check or fill knows its result is stale. */
@@ -181,6 +189,7 @@ export class Editor {
     this.note = src ? '' : this.t('ed.intro');
     this.noteGood = true;
     this.stuckRow = -1;
+    this.missGem = null;
     this.deleteArmed = false;
     this.root.hidden = false;
     $<HTMLInputElement>('edName').value = this.lv.name;
@@ -235,7 +244,7 @@ export class Editor {
   }
 
   private changedRows(clearCheck = true): void {
-    if (clearCheck) { this.stuckRow = -1; this.note = ''; }
+    if (clearCheck) { this.stuckRow = -1; this.missGem = null; this.note = ''; }
     this.persist();
     this.rebuild();
   }
@@ -259,6 +268,23 @@ export class Editor {
     if (r === undefined || lane < 0 || lane >= CFG.lanes || r[lane] === t) return false;
     this.lv.rows[row] = r.slice(0, lane) + t + r.slice(lane + 1);
     return true;
+  }
+
+  /**
+   * Put a gem at the tool's height. A column holds one gem, so a gem already in it gives way: every gem
+   * of a track can then be collected in one run. The ground under a gem in the air stays as it was.
+   */
+  private setGem(row: number, lane: number): boolean {
+    const r = this.lv.rows[row];
+    if (r === undefined || lane < 0 || lane >= CFG.lanes) return false;
+    let any = false;
+    for (const l of gemLanes(r)) if (l !== lane) any = this.setTile(row, l, gemGround(r[l])) || any;
+    return this.setTile(row, lane, gemTile(this.gemH, r[lane])) || any;
+  }
+
+  private clearGem(row: number, lane: number): boolean {
+    const t = this.lv.rows[row]?.[lane];
+    return t !== undefined && gemLevel(t) >= 0 && this.setTile(row, lane, gemGround(t));
   }
 
   private setBars(bars: number): void {
@@ -287,6 +313,7 @@ export class Editor {
 
   private toolHelp(): string {
     const tl = this.tool;
+    if (tl.kind === 'gem') { const k = 'ed.t.' + GEM_KEYS[this.gemH]; return `${this.t('ed.t.gem.n')} \u00B7 ${this.t(k + '.n')}: ${this.t(k + '.d')} ${this.t('ed.t.gem.d')}`; }
     const k = tl.kind === 'pan' ? 'ed.t.pan' : tl.kind === 'flip' ? 'ed.t.flip' : 'ed.t.' + TILES.find(([c]) => c === tl.t)![1];
     return `${this.t(k + '.n')}: ${this.t(k + '.d')}`;
   }
@@ -317,6 +344,7 @@ export class Editor {
   /** Tap on the status line: jump to the stuck spot, or to the next rule hint. */
   private nextIssue(): void {
     if (this.stuckRow >= 0) { this.center(this.stuckRow); return; }
+    if (this.missGem) { this.center(this.missGem.row); return; }
     if (!this.issues.length) return;
     this.issueAt = (this.issueAt + 1) % this.issues.length;
     this.note = '';
@@ -327,7 +355,7 @@ export class Editor {
   // ------------------------------------------------------------------ check and test drive
 
   private async solve(level: Level, opt: SolveOptions, gen: number): Promise<Solver | null> {
-    const s = new Solver(level, { ...opt, stall: CHECK_STALL });
+    const s = new Solver(level, { stall: CHECK_STALL, ...opt });
     while (!s.run(4000)) {
       await pause();
       if (gen !== this.gen) return null;
@@ -335,21 +363,34 @@ export class Editor {
     return s;
   }
 
-  /** Let the bots play the track: first pressing jump only on the beat, and if that fails, freely. */
+  /**
+   * Let the bots play the track: first pressing jump only on the beat, and if that fails, freely. When the
+   * track can be finished on the beat, a third bot has to collect every gem in one run.
+   */
   private async check(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
     this.stuckRow = -1;
+    this.missGem = null;
     this.say(this.t('ed.checking'), true);
     const gen = this.gen, level = this.level;
     await pause();
     const beat = await this.solve(level, { onBeat: true }, gen);
     let free: Solver | null = null;
     if (beat && !beat.ok) free = await this.solve(level, {}, gen);
+    let gems: Solver | null = null;
+    if (beat?.ok && level.gemCount > 0) {
+      this.say(this.t('ed.checkingGems'), true);
+      gems = await this.solve(level, { onBeat: true, gems: true, stall: GEM_STALL }, gen);
+      if (gems && !gems.ok) gems = await this.solve(level, { gems: true, stall: GEM_STALL }, gen);
+    }
     this.busy = false;
-    if (!beat || gen !== this.gen) { this.note = ''; this.status(); return; }
-    if (beat.ok) this.say(this.t('ed.ok'), true);
-    else {
+    if (!beat || gen !== this.gen || (beat.ok && level.gemCount > 0 && !gems)) { this.note = ''; this.status(); return; }
+    if (beat.ok) {
+      this.missGem = gems && !gems.ok ? gems.missedGem : null;
+      if (this.missGem) { this.say(this.t('ed.gemMissed', this.barOf(this.missGem.row)), false); this.center(this.missGem.row); }
+      else this.say(gems ? this.t('ed.okGems', level.gemCount) : this.t('ed.ok'), true);
+    } else {
       const off = !!free?.ok;
       this.stuckRow = Math.min(this.lv.rows.length - 1, Math.floor((off ? beat.furthest : free?.furthest ?? beat.furthest) / CFG.tileL));
       this.say(this.t(off ? 'ed.offBeat' : 'ed.stuck', this.barOf(this.stuckRow)), false);
@@ -612,11 +653,19 @@ export class Editor {
       c.strokeStyle = '#fff'; c.lineWidth = 2; c.lineCap = 'round'; c.lineJoin = 'round';
       c.beginPath(); c.moveTo(6, 17); c.lineTo(28, 17); c.moveTo(11, 12); c.lineTo(6, 17); c.lineTo(11, 22); c.moveTo(23, 12); c.lineTo(28, 17); c.lineTo(23, 22); c.stroke();
     }, () => { this.tool = { kind: 'pan' }; });
+    const icon = (ch: string) => (c: CanvasRenderingContext2D) => {
+      c.fillStyle = '#04041a'; c.fillRect(2, 2, 30, 30);
+      drawTile(c, ch, pal, 3, 3, 28, 28);
+    };
     for (const [ch, key] of TILES) {
-      add(this.t(`ed.t.${key}.n`), tl.kind === 'tile' && tl.t === ch, 34, (c) => {
-        c.fillStyle = '#04041a'; c.fillRect(2, 2, 30, 30);
-        drawTile(c, ch, pal, 3, 3, 28, 28);
-      }, () => { this.tool = { kind: 'tile', t: ch }; });
+      if (ch !== GEM) { add(this.t(`ed.t.${key}.n`), tl.kind === 'tile' && tl.t === ch, 34, icon(ch), () => { this.tool = { kind: 'tile', t: ch }; }); continue; }
+      // one gem; its three heights open next to it while it is the tool in hand
+      add(this.t('ed.t.gem.n'), tl.kind === 'gem', 34, icon(gemTile(this.gemH, '=')), () => { this.tool = { kind: 'gem' }; });
+      if (tl.kind !== 'gem') continue;
+      for (const g of [GEM_LOW, GEM_MID, GEM_HIGH] as const) {
+        add(this.t(`ed.t.${GEM_KEYS[g]}.n`), this.gemH === g, 34, icon(gemTile(g, '=')), () => { this.gemH = g; });
+        box.lastElementChild!.classList.add('sub');
+      }
     }
     add(this.t('ed.t.flip.n'), tl.kind === 'flip', 34, (c) => {
       c.fillStyle = 'rgba(255,60,220,.35)'; c.fillRect(2, 2, 30, 30);
@@ -673,7 +722,7 @@ export class Editor {
     if (this.busy) return;
     if (this.ptrs.size === 2) {
       // a second finger turns whatever was going on into scrolling
-      if (this.drag?.kind === 'paint') { const s = this.undo.pop(); if (s) { this.lv.rows = s.rows; this.lv.flipRows = s.flipRows; this.rebuild(); } }
+      if (this.drag?.kind === 'paint' || this.drag?.kind === 'gem') { const s = this.undo.pop(); if (s) { this.lv.rows = s.rows; this.lv.flipRows = s.flipRows; this.rebuild(); } }
       if (this.drag?.kind === 'flip') { const s = this.undo.pop(); if (s) { this.lv.rows = s.rows; this.lv.flipRows = s.flipRows; this.rebuild(); } }
       this.drag = { kind: 'pan', x: this.midX(), scroll: this.scroll };
       return;
@@ -691,6 +740,13 @@ export class Editor {
       const on = !this.lv.flipRows.includes(cell.row);
       this.setFlip(cell.row, on);
       this.drag = { kind: 'flip', on, row: cell.row };
+      this.draw();
+    } else if (tl.kind === 'gem') {
+      // a gem at this height already: take it away instead (and keep taking gems away along the drag)
+      const on = gemLevel(this.lv.rows[cell.row][cell.lane]) !== this.gemH;
+      this.snap();
+      if (on) this.setGem(cell.row, cell.lane); else this.clearGem(cell.row, cell.lane);
+      this.drag = { kind: 'gem', on, row: cell.row, lane: cell.lane };
       this.draw();
     } else if (tl.kind === 'tile') {
       // painting a tile onto itself wipes back to floor instead
@@ -750,7 +806,8 @@ export class Editor {
       const steps = Math.max(Math.abs(cell.row - d.row), Math.abs(cell.lane - d.lane), 1);
       let any = false;
       for (let i = 1; i <= steps; i++) {
-        any = this.setTile(Math.round(d.row + ((cell.row - d.row) * i) / steps), Math.round(d.lane + ((cell.lane - d.lane) * i) / steps), d.t) || any;
+        const row = Math.round(d.row + ((cell.row - d.row) * i) / steps), lane = Math.round(d.lane + ((cell.lane - d.lane) * i) / steps);
+        any = (d.kind === 'paint' ? this.setTile(row, lane, d.t) : d.on ? this.setGem(row, lane) : this.clearGem(row, lane)) || any;
       }
       d.row = cell.row; d.lane = cell.lane;
       if (any) this.draw();
@@ -762,7 +819,7 @@ export class Editor {
     const d = this.drag;
     if (this.ptrs.size > 0) { if (d?.kind === 'pan') this.drag = { kind: 'pan', x: this.midX(), scroll: this.scroll }; return; }
     this.drag = null;
-    if (d?.kind === 'paint') this.changedRows();
+    if (d?.kind === 'paint' || d?.kind === 'gem') this.changedRows();
     else if (d?.kind === 'flip') { this.lv.flipRows.sort((a, b) => a - b); this.changedRows(); }
   }
 
@@ -782,7 +839,7 @@ export class Editor {
     c.fillRect(0, 0, W, MAP);
     const lh = MAP / CFG.lanes;
     const col: Record<string, string> = {
-      '=': css(pal.floor), '#': css(pal.block), x: css(pal.block), o: css(pal.gem), O: css(pal.gem), '*': css(pal.gem), '+': css(pal.gem),
+      '=': css(pal.floor), '#': css(pal.block), x: css(pal.block), o: css(pal.gem), O: css(pal.gem), '@': css(pal.gem), '*': css(pal.gem), '+': css(pal.gem),
       '^': css(pal.accent), '>': '#fff', i: '#bfeaff', m: css(pal.edge), '|': css(pal.edge), n: css(pal.blockEdge),
     };
     for (let x = 0; x < W; x++) {
@@ -921,6 +978,14 @@ export class Editor {
       c.fillStyle = '#ffd23a'; c.strokeStyle = '#3a2a00'; c.lineWidth = 1;
       c.beginPath(); c.moveTo(x + cw - 2, y + 2); c.lineTo(x + cw - 2, y + 13); c.lineTo(x + cw - 13, y + 2); c.closePath(); c.fill(); c.stroke();
     }
+    if (this.missGem) {
+      // the gem the bot could not collect
+      const x = X(this.missGem.row), y = gy + this.missGem.lane * lh;
+      c.fillStyle = 'rgba(255,40,60,.28)';
+      c.fillRect(x, y, cw, lh);
+      c.strokeStyle = '#ff2a3c'; c.lineWidth = 3;
+      c.strokeRect(x + 1.5, y + 1.5, cw - 3, lh - 3);
+    }
     if (this.stuckRow >= 0) {
       const x = X(this.stuckRow);
       c.fillStyle = 'rgba(255,40,60,.3)';
@@ -937,6 +1002,7 @@ export class Editor {
     c.fillStyle = '#ffd23a';
     for (const i of this.issues) c.fillRect((i.row / n) * W, my - 3, 2, 3);
     if (this.stuckRow >= 0) { c.fillStyle = '#ff2a3c'; c.fillRect((this.stuckRow / n) * W - 1, my - 4, 3, MAP + 4); }
+    if (this.missGem) { c.fillStyle = '#ff2a3c'; c.fillRect((this.missGem.row / n) * W - 1, my - 4, 3, MAP + 4); }
     c.strokeStyle = '#fff'; c.lineWidth = 1.5;
     const vx = Math.max(0, (this.scroll / total) * W), vw = Math.min(W - vx, (W / total) * W);
     c.fillStyle = 'rgba(255,255,255,.16)';

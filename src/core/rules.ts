@@ -9,7 +9,7 @@ import { Level } from './level';
 export type IssueCode =
   /** A gap starts on a beat row, so the take-off would be before the beat. */
   | 'gapOnBeat'
-  /** A pad, boost or floor gem is not on a beat row. */
+  /** A pad, a boost, or a gem on the ground or at jump height over floor is not on a beat row. */
   | 'offBeat'
   /** Spikes that do not start on the third row of a beat. */
   | 'spikeRow'
@@ -20,12 +20,12 @@ export type IssueCode =
 
 export interface Issue { row: number; lane: number; code: IssueCode }
 
-const solid = (s: string): boolean => /[=oOi|m^>xn]/.test(s);
+const solid = (s: string): boolean => /[=oO@i|m^>xn]/.test(s);
 
 export function lint(level: Level): Issue[] {
   const out: Issue[] = [];
   const rows = level.rows;
-  for (const r of [0, 1]) if (rows[r] && !/[=oO]/.test(rows[r][2])) { out.push({ row: r, lane: 2, code: 'start' }); break; }
+  for (const r of [0, 1]) if (rows[r] && !/[=oO@]/.test(rows[r][2])) { out.push({ row: r, lane: 2, code: 'start' }); break; }
   rows.forEach((row, r) => {
     const beatRow = r % CFG.rowsPerBeat === 0;
     if (!beatRow) { const l = row.search(/[\^>oO]/); if (l >= 0) out.push({ row: r, lane: l, code: 'offBeat' }); }

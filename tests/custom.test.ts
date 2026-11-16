@@ -3,11 +3,11 @@ import { CHECK_STALL, autoBuild } from '../src/core/auto';
 import { BAR_ROWS, CFG } from '../src/core/config';
 import { blankLevel, flipRanges, musicBars, musicEnergy, musicStart, sanitize, toDef, type TrackMusic } from '../src/core/custom';
 import { F, FIGURES, autoFill, isPlainBar } from '../src/core/figures';
-import { Level } from '../src/core/level';
+import { GEM_HIGH, GEM_LOW, GEM_MID, Level, gemLanes, gemTile, oneGemPerRow } from '../src/core/level';
 import { LEVELS } from '../src/core/levels';
 import { lint } from '../src/core/rules';
 import { Sim } from '../src/core/sim';
-import { Solver, solve } from '../src/core/solve';
+import { GEM_STALL, Solver, solve, solveGems } from '../src/core/solve';
 
 const mk = (rows: string[], speed = 28, flips?: [number, number][]) => new Level({ id: 't', name: 'T', world: 0, speed, song: 'cyan', rows, flips });
 const plain = (bars: number) => Array<string>(bars * BAR_ROWS).fill(F);
@@ -40,6 +40,114 @@ describe('solver', () => {
       const s = new Solver(new Level(def), { onBeat: true });
       s.run();
       expect(s.maxStall, def.id).toBeLessThan(CHECK_STALL / 2.5);
+    }
+  });
+});
+
+describe('gems', () => {
+  /** Drive straight down the middle lane, pressing jump when the ship's centre passes each of the `jumps` (in rows). */
+  const drive = (level: Level, jumps: number[] = []): Sim => {
+    const sim = new Sim(level);
+    const left = jumps.slice();
+    while (sim.s.alive && !sim.s.finished) {
+      const press = left.length > 0 && sim.s.z >= left[0] * CFG.tileL;
+      if (press) left.shift();
+      sim.step({ steer: 0, jumpPressed: press, jumpHeld: false });
+    }
+    return sim;
+  };
+  const id = (row: number, lane = 2) => row * CFG.lanes + lane;
+
+  it('a gem on the ground is driven through, and a jump goes over it', () => {
+    const rows = plain(2);
+    rows[6] = '==o==';
+    expect(drive(mk(rows)).collected.has(id(6))).toBe(true);
+    expect(drive(mk(rows), [4.6]).collected.has(id(6))).toBe(false);
+  });
+
+  it('a gem at jump height needs a jump, over floor and over a gap alike', () => {
+    const rows = plain(3);
+    rows[6] = '==O==';
+    rows[13] = '..*..'; rows[14] = '.....';
+    const level = mk(rows);
+    expect(drive(level).collected.size).toBe(0);
+    const sim = drive(level, [5.2, 12.5]);
+    expect(sim.s.finished).toBe(true);
+    expect([...sim.collected].sort((a, b) => a - b)).toEqual([id(6), id(13)]);
+  });
+
+  it('a high gem is out of reach of a jump from the road, at every moment of the jump and at every speed', () => {
+    for (const speed of [19, 24, 30, 38]) {
+      for (let from = 3; from < 7; from += 0.125) {
+        const rows = plain(2);
+        rows[7] = '==@==';
+        expect(drive(mk(rows, speed), [from]).collected.size, `speed ${speed}, jump at row ${from}`).toBe(0);
+      }
+    }
+  });
+
+  it('a high gem is reached by a jump from the top of a block', () => {
+    const rows = plain(3);
+    rows[5] = '#####'; rows[6] = '#####'; rows[7] = '==@==';
+    const level = mk(rows);
+    // onto the blocks, then off their top
+    expect(drive(level, [3.5]).collected.size).toBe(0);
+    const sim = drive(level, [3.5, 6.5]);
+    expect(sim.s.finished).toBe(true);
+    expect(sim.collected.has(id(7))).toBe(true);
+  });
+
+  it('a high gem is reached on a jump pad and in a flip zone', { timeout: 60_000 }, () => {
+    const rows = plain(3);
+    rows[6] = '^^^^^'; rows[7] = '..+..'; rows[8] = '.....'; rows[9] = '.....'; rows[10] = '.....';
+    expect(drive(mk(rows, 24)).collected.has(id(7))).toBe(true);
+    const flip = plain(4);
+    flip[18] = '==@==';
+    expect(solveGems(mk(flip, 28, [[12, 24]])).ok).toBe(true);
+    expect(solveGems(mk(flip, 28)).ok).toBe(false);
+  });
+
+  it('the gem tool keeps the ground under a gem in the air and puts floor under one on the ground', () => {
+    expect(gemTile(GEM_LOW, '=')).toBe('o');
+    expect(gemTile(GEM_LOW, '.')).toBe('o');
+    expect(gemTile(GEM_MID, '#')).toBe('O');
+    expect(gemTile(GEM_MID, '.')).toBe('*');
+    expect(gemTile(GEM_HIGH, '=')).toBe('@');
+    expect(gemTile(GEM_HIGH, '*')).toBe('+');
+  });
+
+  it('a row keeps one gem: the one nearest the gem before it', () => {
+    expect(oneGemPerRow(['=o=o=', '=====', 'o=o=o', '.*.+.', '==o=='])).toEqual(['=o===', '=====', 'o====', '.*...', '==o==']);
+    const old = sanitize({ id: 'a', rows: ['=o=o=', ...plain(4).slice(1)] })!;
+    expect(old.rows.every((r) => gemLanes(r).length < 2)).toBe(true);
+    expect(old.rows[0]).toBe('=o===');
+  });
+
+  it('the gem bot collects every gem, and names the gem that cannot be had', { timeout: 60_000 }, () => {
+    const rows = plain(4);
+    rows[6] = '=o==='; rows[12] = '===o='; rows[19] = '..*..'; rows[20] = '.....'; rows[30] = '==O==';
+    const good = solveGems(mk(rows));
+    expect(good.ok).toBe(true);
+    expect(good.gems).toBe(4);
+    // two gems one row apart at opposite edges, and a high gem with nothing to climb
+    const far = plain(4);
+    far[6] = 'o===='; far[7] = '====o';
+    expect(solveGems(mk(far)).missed).toEqual({ row: 7, lane: 4 });
+    const high = plain(4);
+    high[6] = '=o==='; high[18] = '==@==';
+    const res = solveGems(mk(high));
+    expect(res.ok).toBe(false);
+    expect(res.missed).toEqual({ row: 18, lane: 2 });
+    // the track itself is fine
+    expect(solve(mk(high)).ok).toBe(true);
+  });
+
+  it('the official tracks never come near the no-progress limit of the gem check', { timeout: 60_000 }, () => {
+    for (const def of LEVELS) for (const onBeat of [true, false]) {
+      const s = new Solver(new Level(def), { onBeat, gems: true });
+      s.run();
+      expect(s.ok, def.name).toBe(true);
+      expect(s.maxStall, def.name).toBeLessThan(GEM_STALL / 3);
     }
   });
 });

@@ -1,6 +1,6 @@
 import { BAR_ROWS, CFG } from './config';
 import { F } from './figures';
-import type { LevelDef } from './level';
+import { oneGemPerRow, type LevelDef } from './level';
 
 /*
  * PLAYER-MADE TRACKS (the level editor, docs/EDITOR.md).
@@ -12,7 +12,7 @@ import type { LevelDef } from './level';
  */
 
 /** Every tile character a track may contain. */
-export const TILES = '.=#^>oO*+mi|xn';
+export const TILES = '.=#^>oO@*+mi|xn';
 /** Speeds the movement tuning can be played at, and the tempo range that gives (one octave). */
 export const MIN_SPEED = 19, MAX_SPEED = 38;
 export const MIN_BPM = MIN_SPEED * 5, MAX_BPM = MAX_SPEED * 5;
@@ -155,7 +155,8 @@ export function sanitize(raw: unknown): CustomLevel | null {
   }
   return {
     v: 1, id: r.id, name: String(r.name ?? 'TRACK').slice(0, 24), world: Math.round(num(r.world, 0, 0, 99)),
-    speed: music ? music.bpm / 5 : num(r.speed, 24, MIN_SPEED, MAX_SPEED), song: typeof r.song === 'string' ? r.song : 'drift', rows,
+    // tracks built before a row could hold only one gem
+    speed: music ? music.bpm / 5 : num(r.speed, 24, MIN_SPEED, MAX_SPEED), song: typeof r.song === 'string' ? r.song : 'drift', rows: oneGemPerRow(rows),
     flipRows,
     music, updated: num(r.updated, 0, 0, Number.MAX_SAFE_INTEGER),
   };

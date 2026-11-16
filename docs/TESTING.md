@@ -19,6 +19,7 @@ After a change to the editor, the analysis or custom tracks also run the three s
 
 - **Completable**: a bot deciding every 50 ms finishes every track; so does one deciding every 100 ms.
 - **Rhythm**: a bot that may press jump only within ±0.17 beat of a beat finishes every track. Tracks are 16 whole bars; flip zones sit on bar lines; pads, boosts and floor gems are on beat rows.
+- **Gems**: no row holds two gems, and a bot that jumps only on the beat collects every gem of every track in one run. The three heights behave as described (road, jump, block top / pad / flip zone), and the gem bot names a gem that cannot be had.
 - **Jump pads** land with no input when entered early, in the middle and late.
 - **Flip zones**: no tapping loses the ship in 0.8 to 1.4 s; holding does not help; tapping exactly once per beat holds altitude through the whole zone; a calm rhythm under two taps a second gets through; gravity returns.
 - **Practice checkpoints**: enough of them, never more than 34 rows apart, none kills at once, and from each one the bot gets past the checkpoint after next.

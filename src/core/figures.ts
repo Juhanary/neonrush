@@ -15,7 +15,7 @@ export const F = '=====', G = '.....';
 export const run = (row = F, beats = 1): Rows => Array<string>(beats * CFG.rowsPerBeat).fill(row);
 /** One beat whose beat row is `first` (a wall, a pad, a gem row) followed by `rest`. */
 export const on = (first: string, rest = F): Rows => [first, rest, rest];
-/** Jump on the beat: take off from `from`, then a two-row gap. `air` is the first gap row (for a gem). */
+/** Jump on the beat: take off from `from`, then a two-row gap. `air` is the first gap row (for a gem in the air). */
 export const hop = (from = F, air = G): Rows => [from, air, G];
 /** Long jump, two beats: a three-row gap. Needs 28 m/s or more. */
 export const leap = (from = F, to = F): Rows => [from, G, G, G, to, to];
@@ -24,7 +24,7 @@ export const mount = (wall = '#####', after = F): Rows => [F, F, wall, wall, wal
 /** Jump pad, two beats: launches on the beat, `air` holds gems, lands straight ahead on what follows. */
 export const pad = (air = '..+..', gapRows = 5): Rows => ['^^^^^', air, air, ...Array<string>(gapRows - 2).fill(G), ...Array<string>(5 - gapRows).fill(F)];
 /** Boost pad and the long jump it is for, four beats (a whole bar). */
-export const boost = (air = '.*.*.'): Rows => ['>>>>>', F, F, F, F, F, F, air, G, G, G, F];
+export const boost = (air = '..*..'): Rows => ['>>>>>', F, F, F, F, F, F, air, G, G, G, F];
 /** Exactly one bar. */
 export const bar = (...parts: Rows[]): Rows => {
   const rows = parts.flat();
@@ -48,7 +48,7 @@ const sided = (lane: number, rows: Rows): Rows => (lane > 2 ? mirror(rows) : row
 
 export const FIGURES: Figure[] = [
   { id: 'floor', beats: 1, build: () => run() },
-  { id: 'gems', beats: 1, build: () => on('=o=o=') },
+  { id: 'gems', beats: 1, build: (l) => on(put(F, l, 'o')) },
   { id: 'hop', beats: 1, build: () => hop() },
   { id: 'block', beats: 1, build: (l) => [F, F, put(F, l, '#')] },
   { id: 'wall', beats: 1, build: (l) => on(l < 2 ? '==###' : l > 2 ? '###==' : '#===#') },
@@ -74,26 +74,26 @@ export const FIGURES: Figure[] = [
 interface AutoBar { tier: 1 | 2 | 3; rows(speed: number): Rows; min?: number; max?: number; air?: boolean; ground?: boolean; flat?: boolean }
 
 const AUTO: AutoBar[] = [
-  { tier: 1, flat: true, rows: () => bar(run(), on('=o=o='), run(), on('==o==')) },
+  { tier: 1, flat: true, rows: () => bar(run(), on('==o=='), run(), on('==o==')) },
   { tier: 1, rows: () => bar(run(), on('==o=='), run(), hop()), air: true },
   { tier: 1, rows: () => bar(run(), on('=o==='), on('===o='), on('=o===')) },
-  { tier: 1, rows: () => bar(run(), [F, F, '==#=='], run(), on('=o=o=')) },
+  { tier: 1, rows: () => bar(run(), [F, F, '==#=='], run(), on('==o==')) },
   { tier: 1, rows: () => bar(run(), run('.===.', 2), on('==o==')) },
-  { tier: 1, rows: () => bar(run(), hop(), run(), on('o===o')) },
+  { tier: 1, rows: () => bar(run(), hop(), run(), on('=o===')) },
 
   { tier: 2, rows: () => bar(run(), hop(), run(), hop()), air: true },
   { tier: 2, rows: () => bar(run(), on('###=='), run(), on('==###')) },
   { tier: 2, rows: () => bar(run(), run('===..'), run('.===.'), on('..=o=', '..===')) },
-  { tier: 2, rows: () => bar(run(), [F, F, 'xxxxx'], run(), on('=o=o=')) },
+  { tier: 2, rows: () => bar(run(), [F, F, 'xxxxx'], run(), on('==o==')) },
   { tier: 2, rows: (s) => bar(run(), pad('..+..', padGap(s)), run()) },
   { tier: 2, min: 21, rows: () => bar(run(), run('==...'), hop('=o...'), run('...==')) },
   { tier: 2, rows: () => bar(run(), on('=O==='), run(), on('===O=')) },
-  { tier: 2, rows: () => bar(run(), run('.|.|.', 2), on('=o=o=')) },
+  { tier: 2, rows: () => bar(run(), run('.|.|.', 2), on('==o==')) },
   { tier: 2, rows: () => bar(run(), [F, F, 'xx=xx'], on('==o=='), hop()), air: true },
 
-  { tier: 3, rows: () => bar(run(), mount(), on('=o=o=')) },
+  { tier: 3, rows: () => bar(run(), mount(), on('==o==')) },
   { tier: 3, min: 24, rows: () => bar(run(), [F, F, 'xxxxx'], ['xxxxx', F, F], hop()), air: true },
-  { tier: 3, min: 28, rows: () => bar(run(), leap(), on('=o=o=')) },
+  { tier: 3, min: 28, rows: () => bar(run(), leap(), on('==o==')) },
   { tier: 3, rows: () => bar(run(), on('##=##'), run('..=..'), hop('..=..')), air: true },
   { tier: 3, rows: () => bar(run(), hop(F, '..*..'), run(), [F, F, 'xxxxx']), air: true },
   { tier: 3, rows: () => bar(run(), on('###=='), on('==o=='), [F, F, 'xx=xx']), air: true },
@@ -116,7 +116,7 @@ export function rng(seed: number): () => number {
 
 export const isPlainBar = (rows: Rows): boolean => rows.every((r) => r === F);
 const endsInAir = (rows: Rows): boolean => rows.slice(-2).some((r) => /[.*+]/.test(r)) || rows.slice(-1).some((r) => r.includes('x'));
-const calmStart = (rows: Rows): boolean => rows.slice(0, 2).every((r) => r === F || /^[=oO]+$/.test(r));
+const calmStart = (rows: Rows): boolean => rows.slice(0, 2).every((r) => r === F || /^[=oO@]+$/.test(r));
 
 /**
  * Fill the plain bars of a track with figures that match the music: `energy[b]` (1..3) picks how busy

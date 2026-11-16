@@ -29,10 +29,11 @@ Input.sample() -> Sim.step() x N (fixed dt) -> Sim.events -> View.onEvent / Game
 | `#` | block: crash from the front, slide along the side, land on top |
 | `^` | jump pad |
 | `>` | boost pad |
-| `o` | floor with a gem |
-| `O` | floor with a high gem (needs a jump) |
-| `*` | gap with a gem in the air |
-| `+` | gap with a gem high on a jump-pad arc |
+| `o` | floor with a gem on the road |
+| `O` | floor with a gem at jump height |
+| `@` | floor with a gem high up (block top, jump pad or flip zone) |
+| `*` | gap with a gem at jump height |
+| `+` | gap with a gem high up |
 | `x` | spikes: floor with red pyramids, lethal below `spikeH` anywhere in the (inset) footprint; cannot be landed on |
 | `m` | moving road: slides sideways as `moveAmp * sin(beat * moveBeat - row * moveK)`, where `beat` is the ship's beat position (sim and shader share the constants) |
 | `i` | ice: steering grip drops to `iceGrip` |

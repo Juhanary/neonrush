@@ -1,7 +1,7 @@
 import { GameAudio, type MusicTrack } from '../audio/audio';
 import { BEAT_LEN, CFG } from '../core/config';
 import { CUSTOM_PREFIX, toDef, type CustomLevel } from '../core/custom';
-import { Level } from '../core/level';
+import { Level, isGem } from '../core/level';
 import { LEVELS } from '../core/levels';
 import { Sim, type ShipState } from '../core/sim';
 import { PALETTES } from '../render/palette';
@@ -221,7 +221,7 @@ export class Game {
     }), this.store.list().map((c) => {
       const pal = PALETTES[c.world % PALETTES.length], id = CUSTOM_PREFIX + c.id;
       let gemTotal = 0;
-      for (const r of c.rows) for (const ch of r) if ('oO*+'.includes(ch)) gemTotal++;
+      for (const r of c.rows) for (const ch of r) if (isGem(ch)) gemTotal++;
       return {
         id: c.id, name: c.name, world: c.world, bpm: Math.round(c.speed * 5), music: !!c.music, best: Math.round(this.save.best[id] ?? 0),
         gems: this.save.gems[id] ?? 0, gemTotal, done: !!this.save.done[id], stars: this.save.stars[id] ?? 0, css: pal.css, css2: pal.css2,

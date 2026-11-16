@@ -1,3 +1,4 @@
+import { GEM_HIGH, GEM_LOW, GEM_MID, gemGround, gemLevel } from '../core/level';
 import type { Palette } from '../render/palette';
 
 /** 2D drawings of the tiles for the level editor: the track seen from above, driving direction to the right. */
@@ -50,19 +51,20 @@ export function drawTile(c: CanvasRenderingContext2D, t: string, pal: Palette, x
       }
       break;
     }
-    case 'o': case 'O': case '*': case '+': {
-      if (t === 'o' || t === 'O') floor(c, pal, x, y, w, h);
-      const high = t === 'O' || t === '+';
+    case 'o': case 'O': case '@': case '*': case '+': {
+      // one gem at three heights: plain on the ground, one ring at jump height, two rings high up
+      const g = gemLevel(t);
+      if (gemGround(t) === '=') floor(c, pal, x, y, w, h);
+      const r = u * (g === GEM_LOW ? 0.27 : g === GEM_MID ? 0.2 : 0.16);
       c.fillStyle = css(pal.gem);
-      diamond(c, cx, cy, u * (high ? 0.2 : 0.27)); c.fill();
+      diamond(c, cx, cy, r); c.fill();
       c.strokeStyle = '#fff'; c.lineWidth = Math.max(1, u * 0.04);
-      diamond(c, cx, cy, u * (high ? 0.2 : 0.27)); c.stroke();
-      if (high) {
-        // a ring: this gem hangs high (needs a jump, or sits on a pad arc)
-        c.strokeStyle = css(pal.gem); c.lineWidth = Math.max(1, u * 0.06);
-        c.setLineDash(t === '+' ? [u * 0.12, u * 0.1] : []);
-        c.beginPath(); c.arc(cx, cy, u * 0.38, 0, Math.PI * 2); c.stroke();
-        c.setLineDash([]);
+      diamond(c, cx, cy, r); c.stroke();
+      c.strokeStyle = css(pal.gem); c.lineWidth = Math.max(1, u * 0.055);
+      if (g === GEM_MID) { c.beginPath(); c.arc(cx, cy, u * 0.38, 0, Math.PI * 2); c.stroke(); }
+      if (g === GEM_HIGH) {
+        c.beginPath(); c.arc(cx, cy, u * 0.31, 0, Math.PI * 2); c.stroke();
+        c.beginPath(); c.arc(cx, cy, u * 0.43, 0, Math.PI * 2); c.stroke();
       }
       break;
     }
