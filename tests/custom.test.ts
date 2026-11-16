@@ -325,6 +325,36 @@ describe('custom tracks', () => {
     expect(s3.s.alive).toBe(false);
   });
 
+  it('a jump onto a block that comes up a little short still lands on top', () => {
+    for (const speed of [24, 30, 34]) {
+      const rows = Array<string>(4 * BAR_ROWS).fill(F);
+      for (const r of [12, 13, 14]) rows[r] = '#####';
+      let ok = 0;
+      const lost: string[] = [];
+      for (let from = 7; from < 12; from += 0.125) {
+        const sim = new Sim(mk(rows, speed));
+        let pressed = false, maxY = 0;
+        while (sim.s.alive && !sim.s.finished) {
+          const p = !pressed && sim.s.z >= from * CFG.tileL;
+          if (p) pressed = true;
+          sim.step({ steer: 0, jumpPressed: p, jumpHeld: false });
+          if (sim.s.z < 12 * CFG.tileL) maxY = Math.max(maxY, sim.s.y);
+        }
+        if (sim.s.alive) ok++;
+        // a ship that was ever within the assist of the top when it got there must not crash
+        else if (sim.s.y >= CFG.blockH - CFG.ledgeAssist) lost.push(`${from}: ${sim.s.y.toFixed(2)}`);
+      }
+      expect(lost, `speed ${speed}`).toEqual([]);
+      expect(ok, `speed ${speed}`).toBeGreaterThan(20);
+    }
+    // driving into a block on the road is still a crash
+    const wall = Array<string>(4 * BAR_ROWS).fill(F);
+    wall[12] = '#####';
+    const s = new Sim(mk(wall));
+    while (s.s.alive && !s.s.finished) s.step({ steer: 0, jumpPressed: false, jumpHeld: false });
+    expect(s.s.alive).toBe(false);
+  });
+
   it('stored data is rebuilt defensively', () => {
     expect(sanitize(null)).toBeNull();
     expect(sanitize({ id: 'x' })).toBeNull();

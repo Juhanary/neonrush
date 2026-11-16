@@ -147,14 +147,14 @@ export class Level {
    * Walkable surface height at a point, or null over a gap. Spikes ('x') stand on floor (height 0) and are
    * lethal in Sim. An air block ('n') has two surfaces: the road under it and its own top. `y` is the height
    * of the ship that asks: at or above the top (within the step tolerance) it gets the top, below it the road,
-   * where Sim destroys a ship that touches the block. `beat` (the ship's beat position) only matters for moving tiles.
+   * where Sim destroys a ship that touches the block (`reach` widens the top for the ledge assist). `beat` (the ship's beat position) only matters for moving tiles.
    */
-  heightAt(x: number, z: number, beat = 0, y = 0): number | null {
+  heightAt(x: number, z: number, beat = 0, y = 0, reach: number = CFG.stepTol): number | null {
     const row = this.rowOf(z);
     const lane = this.laneOf(x);
     const t = this.tile(row, lane);
     if (t === '#') return CFG.blockH;
-    if (t === 'n') return y >= CFG.airHi - CFG.stepTol ? CFG.airHi : 0;
+    if (t === 'n') return y >= CFG.airHi - reach ? CFG.airHi : 0;
     if (t === '|') return Math.abs(x - this.laneCenter(lane)) <= CFG.railHalf ? 0 : null;
     if (t !== '.' && t !== '*' && t !== '+' && t !== 'm') return 0;
     if (row >= 0 && row < this.length && this.moving[row]) {

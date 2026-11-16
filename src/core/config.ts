@@ -43,6 +43,13 @@ export const CFG = {
   shipHalfL: 0.9,
   /** Ledges up to this height are stepped onto instead of crashing. */
   stepTol: 0.3,
+  /**
+   * Ledge assist: a ship in the air whose front meets the top of a block at most this far above it is lifted
+   * onto the top instead of crashing, so a jump that comes up a little short still lands. Not for jumps from
+   * the road into an air block: its top only takes `airLedge`, and a jump from the road peaks at 2.5 m.
+   */
+  ledgeAssist: 0.7,
+  airLedge: 0.35,
   fallY: -5,
 
   /**

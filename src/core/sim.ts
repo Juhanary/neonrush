@@ -117,14 +117,20 @@ export class Sim {
     else s.speed = Math.max(want, s.speed - (s.flip ? CFG.flipBrake : CFG.speedDecel) * dt);
     const nz = s.z + s.speed * dt;
     const front = nz + CFG.shipHalfL;
+    // a ship in the air that meets the top of a block a little too low is lifted onto it (CFG.ledgeAssist)
+    const inAir = !s.grounded && !s.flip;
+    let lift = -Infinity;
     for (const off of [-0.8, 0.8]) {
-      const h = this.h(s.x + off * CFG.shipHalfW, front);
+      const h = L.heightAt(s.x + off * CFG.shipHalfW, front, L.beatAt(s.z), s.y, inAir ? CFG.airLedge : CFG.stepTol);
       if (h !== null && h > s.y + CFG.stepTol) {
+        // only onto the top of a block or an air block: a ship that has dropped into a gap stays in it
+        if (inAir && h >= CFG.blockH && h <= s.y + (h === CFG.airHi ? CFG.airLedge : CFG.ledgeAssist)) { lift = Math.max(lift, h); continue; }
         s.alive = false;
         this.events.push({ type: 'crash' });
         return;
       }
     }
+    if (lift > s.y) { s.y = lift; s.vy = Math.max(s.vy, 0); }
     s.z = nz;
 
     const flip = L.inFlip(s.z);
