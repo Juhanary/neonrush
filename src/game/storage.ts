@@ -12,6 +12,9 @@ export interface Save {
   lang?: 'en' | 'fi';
   /** Coins used in the shop. Coins held = coins earned (see profile.ts) minus this. */
   spent?: number;
+  /** What the server was last told about each level (see net/sync.ts), and the account that was told. */
+  synced?: Record<string, [number, number, number, 0 | 1]>;
+  syncedFor?: string;
 }
 
 const KEY = 'neonrush.save.v1';
