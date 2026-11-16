@@ -59,3 +59,15 @@ describe('player stats', () => {
     expect(s.attempts).toBe(0);
   });
 });
+
+describe('server schema', () => {
+  it('knows every official level and its gem total', async () => {
+    // vite reads the migration files as text
+    const files = import.meta.glob('../supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+    const sql = Object.keys(files).sort().map((f) => files[f]).join('\n');
+    const { Level } = await import('../src/core/level');
+    const seeded = new Map([...sql.matchAll(/\('([a-z0-9-]+)', (\d+)\)/g)].map((m) => [m[1], +m[2]]));
+    for (const d of LEVELS) expect([d.id, seeded.get(d.id)]).toEqual([d.id, new Level(d).gemCount]);
+    expect(seeded.size).toBeGreaterThanOrEqual(LEVELS.length);
+  });
+});
