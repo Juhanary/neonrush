@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a3c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Neonrush</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="touch"></div>
+<div id="danger"></div>
+<div id="flash"></div>
+<div id="stick"><i></i></div>
+
+<div id="hud" hidden>
+  <div class="hud-left">
+    <button id="pauseBtn" class="icon" aria-label="Pause">&#10074;&#10074;</button>
+    <span id="attempt">ATTEMPT 1</span>
+    <span id="prac" hidden>
+      <button id="cpStartBtn" class="icon" aria-label="From the start">&#9664;&#9664;</button>
+      <button id="cpBackBtn" class="icon" aria-label="Previous checkpoint">&#9664;</button>
+      <b data-i18n="practice">PRACTICE</b>
+    </span>
+  </div>
+  <div id="bar"><i></i><div id="ticks"></div><span id="pct">0%</span></div>
+  <div id="gems">&#9670; 0</div>
+</div>
+<div id="hint"></div>
+<div id="callout"></div>
+<div id="banner"></div>
+<div id="tap" data-i18n="tap">TAP!</div>
+
+<section id="menu" class="panel">
+  <h1 class="logo"><span>NEON</span><span>RUSH</span></h1>
+  <p class="tag" data-i18n="tag">HOVER &middot; JUMP &middot; SURVIVE</p>
+  <div id="levels"></div>
+  <div class="row">
+    <button id="muteBtn" class="ghost">SOUND ON</button>
+    <button id="fsBtn" class="ghost" data-i18n="fullscreen">FULLSCREEN</button>
+    <button id="langBtn" class="ghost" data-i18n="switchLang">SUOMEKSI</button>
+    <button id="modeBtn" class="ghost">PRACTICE: OFF</button>
+    <button id="editBtn" class="ghost" data-i18n="editor">EDITOR</button>
+    <button id="guideBtn" class="ghost" data-i18n="guide">GUIDE</button>
+  </div>
+  <p id="modeNote" class="note2" data-i18n="practiceMenu" hidden></p>
+  <p id="rotate" class="note" data-i18n="landscape">Best played in landscape</p>
+</section>
+
+<section id="pause" class="panel" hidden>
+  <h2 data-i18n="paused">PAUSED</h2>
+  <div class="col">
+    <button id="resumeBtn" class="big" data-i18n="resume">RESUME</button>
+    <button id="restartBtn" class="ghost" data-i18n="restart">RESTART</button>
+    <button id="quitBtn" class="ghost" data-i18n="levels">LEVELS</button>
+  </div>
+</section>
+
+<section id="guide" class="panel" hidden>
+  <h2 data-i18n="guideTitle">HOW IT WORKS</h2>
+  <div id="guideList"></div>
+  <button id="guideBack" class="big" data-i18n="back">BACK</button>
+</section>
+
+<section id="done" class="panel" hidden>
+  <h2 id="doneTitle">LEVEL COMPLETE</h2>
+  <div id="stars"><span>&#9733;</span><span>&#9733;</span><span>&#9733;</span></div>
+  <p id="doneNote" class="note2">FINISH &middot; HALF THE GEMS &middot; ALL GEMS</p>
+  <p id="doneStats" class="stats"></p>
+  <div class="col">
+    <button id="nextBtn" class="big" data-i18n="next">NEXT LEVEL</button>
+    <button id="againBtn" class="ghost" data-i18n="again">PLAY AGAIN</button>
+    <button id="doneMenuBtn" class="ghost" data-i18n="levels">LEVELS</button>
+  </div>
+</section>
+
+<section id="editor" hidden>
+  <div id="edTop">
+    <button id="edBack" class="tb"><i>&#9664;</i><span data-i18n="ed.b.back">MENU</span></button>
+    <input id="edName" maxlength="24" spellcheck="false" autocomplete="off" autocapitalize="characters" enterkeyhint="done" aria-label="Name">
+    <button id="edUndo" class="tb"><i>&#8630;</i><span data-i18n="ed.b.undo">UNDO</span></button>
+    <button id="edRedo" class="tb"><i>&#8631;</i><span data-i18n="ed.b.redo">REDO</span></button>
+    <button id="edZoom" class="tb"><i>&#8596;</i><span data-i18n="ed.b.zoom">ZOOM</span></button>
+    <button id="edSet" class="tb"><i>&#9835;</i><span data-i18n="ed.b.music">MUSIC</span></button>
+    <button id="edTrack" class="tb"><i>&#9881;</i><span data-i18n="ed.b.track">TRACK</span></button>
+    <button id="edCheck" class="tb"><i>&#10003;</i><span data-i18n="ed.b.check">CHECK</span></button>
+    <button id="edTest" class="tb go"><i>&#9654;</i><span data-i18n="ed.b.test">TEST</span></button>
+  </div>
+  <button id="edStatus"></button>
+  <canvas id="edGrid"></canvas>
+  <div id="edTools"><div id="edPalette"></div></div>
+  <div id="edPanel" hidden>
+    <div class="ed-sheet" id="edSheetMusic">
+      <div class="ed-row ed-head"><h3 data-i18n="ed.musicTitle">MUSIC</h3><button class="big edClose" data-i18n="ed.done">DONE</button></div>
+      <p class="ed-note" id="edMusicLead"></p>
+      <div id="edGameSec" class="ed-sec">
+        <h4 data-i18n="ed.hGame">A. A GAME SONG</h4>
+        <div id="edSongs" class="ed-chips"></div>
+        <div class="ed-row"><button id="edSongPlay" class="big"></button><label data-i18n="ed.gen">OR A NEW ONE:</label><div id="edMoods" class="ed-chips"></div></div>
+        <p id="edSongInfo" class="ed-note"></p>
+        <div class="ed-row" id="edSpeedRow"><label data-i18n="ed.speed">SPEED</label><input id="edSpeed" type="range" step="1"><b id="edSpeedVal"></b></div>
+      </div>
+      <div class="ed-sec">
+        <h4 data-i18n="ed.hOwn">B. YOUR OWN SONG</h4>
+        <div class="ed-row"><button id="edPick" class="big" data-i18n="ed.pick">CHOOSE A MUSIC FILE</button><input id="edFile" type="file" accept="audio/*" hidden></div>
+        <p id="edMusicInfo" class="ed-note"></p>
+        <div id="edMusicCtl" hidden>
+          <div class="ed-row"><button id="edListen" class="big"></button><button id="edNoMusic" class="ghost" data-i18n="ed.noMusic">REMOVE THE FILE</button></div>
+          <p class="ed-note" data-i18n="ed.musicHelp"></p>
+          <details>
+            <summary data-i18n="ed.fine">FINE TUNING</summary>
+            <div class="ed-row"><label data-i18n="ed.tempo">TEMPO</label><button data-bpm="-1">&minus;1</button><button data-bpm="-0.1">&minus;0.1</button><b id="edBpm"></b><button data-bpm="0.1">+0.1</button><button data-bpm="1">+1</button></div>
+            <div class="ed-row"><label data-i18n="ed.start">START AT</label><button data-first="-4" aria-label="One bar earlier">&#9664;&#9664;</button><button data-first="-1" aria-label="One beat earlier">&#9664;</button><b id="edStart"></b><button data-first="1" aria-label="One beat later">&#9654;</button><button data-first="4" aria-label="One bar later">&#9654;&#9654;</button></div>
+            <div class="ed-row"><label data-i18n="ed.shift">CLICK OFF</label><button data-half="1" id="edHalf">&frac12;</button><button data-nudge="-0.01">&minus;10 ms</button><button data-nudge="0.01">+10 ms</button><button id="edFit" class="ghost" data-i18n="ed.fit">LENGTH FROM THE SONG</button></div>
+          </details>
+        </div>
+      </div>
+    </div>
+    <div class="ed-sheet" id="edSheetTrack">
+      <div class="ed-row ed-head"><h3 data-i18n="ed.trackTitle">TRACK</h3><button class="big edClose" data-i18n="ed.done">DONE</button></div>
+      <p id="edTrackInfo" class="ed-note"></p>
+      <div class="ed-row"><label data-i18n="ed.theme">WORLD</label><div id="edThemes" class="ed-chips"></div></div>
+      <div class="ed-row"><label data-i18n="ed.length">LENGTH</label><button data-bars="-4">&minus;</button><b id="edBars"></b><button data-bars="4">+</button></div>
+      <div class="ed-row"><button id="edDelete" class="ghost"></button></div>
+    </div>
+  </div>
+</section>
+
+<div id="fatal" hidden></div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,372 @@
+import { describe, expect, it } from 'vitest';
+import { CHECK_STALL, autoBuild } from '../src/core/auto';
+import { BAR_ROWS, CFG } from '../src/core/config';
+import { blankLevel, flipRanges, musicBars, musicEnergy, musicStart, sanitize, toDef, type TrackMusic } from '../src/core/custom';
+import { F, FIGURES, autoFill, isPlainBar } from '../src/core/figures';
+import { GEM_HIGH, GEM_LOW, GEM_MID, Level, gemLanes, gemTile, oneGemPerRow } from '../src/core/level';
+import { LEVELS } from '../src/core/levels';
+import { lint } from '../src/core/rules';
+import { Sim } from '../src/core/sim';
+import { GEM_STALL, Solver, solve, solveGems } from '../src/core/solve';
+
+const mk = (rows: string[], speed = 28, flips?: [number, number][]) => new Level({ id: 't', name: 'T', world: 0, speed, song: 'cyan', rows, flips });
+const plain = (bars: number) => Array<string>(bars * BAR_ROWS).fill(F);
+
+describe('solver', () => {
+  it('gives the same answer in slices as in one go', () => {
+    const level = new Level(LEVELS[2]);
+    const whole = solve(level, 6, 0, Infinity, true);
+    const s = new Solver(level, { onBeat: true });
+    let slices = 0;
+    while (!s.run(500)) slices++;
+    expect(slices).toBeGreaterThan(3);
+    expect(s.ok).toBe(true);
+    expect(s.nodes).toBe(whole.nodes);
+    expect(s.jumps).toEqual(whole.jumps);
+  });
+
+  it('gives up on a track that cannot be passed without searching everything before it', { timeout: 60_000 }, () => {
+    const rows = plain(24);
+    for (let r = 20 * BAR_ROWS + 1; r < 20 * BAR_ROWS + 9; r++) rows[r] = '.....'; // an eight-row gap in bar 21
+    const s = new Solver(mk(rows), { onBeat: true, stall: CHECK_STALL });
+    s.run();
+    expect(s.ok).toBe(false);
+    expect(Math.floor(s.furthest / CFG.tileL / BAR_ROWS)).toBe(20);
+    expect(s.nodes).toBeLessThan(400_000);
+  });
+
+  it('the official tracks never come near the no-progress limit of the editor check', () => {
+    for (const def of LEVELS) {
+      const s = new Solver(new Level(def), { onBeat: true });
+      s.run();
+      expect(s.maxStall, def.id).toBeLessThan(CHECK_STALL / 2.5);
+    }
+  });
+});
+
+describe('gems', () => {
+  /** Drive straight down the middle lane, pressing jump when the ship's centre passes each of the `jumps` (in rows). */
+  const drive = (level: Level, jumps: number[] = []): Sim => {
+    const sim = new Sim(level);
+    const left = jumps.slice();
+    while (sim.s.alive && !sim.s.finished) {
+      const press = left.length > 0 && sim.s.z >= left[0] * CFG.tileL;
+      if (press) left.shift();
+      sim.step({ steer: 0, jumpPressed: press, jumpHeld: false });
+    }
+    return sim;
+  };
+  const id = (row: number, lane = 2) => row * CFG.lanes + lane;
+
+  it('a gem on the ground is driven through, and a jump goes over it', () => {
+    const rows = plain(2);
+    rows[6] = '==o==';
+    expect(drive(mk(rows)).collected.has(id(6))).toBe(true);
+    expect(drive(mk(rows), [4.6]).collected.has(id(6))).toBe(false);
+  });
+
+  it('a gem at jump height needs a jump, over floor and over a gap alike', () => {
+    const rows = plain(3);
+    rows[6] = '==O==';
+    rows[13] = '..*..'; rows[14] = '.....';
+    const level = mk(rows);
+    expect(drive(level).collected.size).toBe(0);
+    const sim = drive(level, [5.2, 12.5]);
+    expect(sim.s.finished).toBe(true);
+    expect([...sim.collected].sort((a, b) => a - b)).toEqual([id(6), id(13)]);
+  });
+
+  it('a high gem is out of reach of a jump from the road, at every moment of the jump and at every speed', () => {
+    for (const speed of [19, 24, 30, 38]) {
+      for (let from = 3; from < 7; from += 0.125) {
+        const rows = plain(2);
+        rows[7] = '==@==';
+        expect(drive(mk(rows, speed), [from]).collected.size, `speed ${speed}, jump at row ${from}`).toBe(0);
+      }
+    }
+  });
+
+  it('a high gem is reached by a jump from the top of a block', () => {
+    const rows = plain(3);
+    rows[5] = '#####'; rows[6] = '#####'; rows[7] = '==@==';
+    const level = mk(rows);
+    // onto the blocks, then off their top
+    expect(drive(level, [3.5]).collected.size).toBe(0);
+    const sim = drive(level, [3.5, 6.5]);
+    expect(sim.s.finished).toBe(true);
+    expect(sim.collected.has(id(7))).toBe(true);
+  });
+
+  it('a high gem is reached on a jump pad and in a flip zone', { timeout: 60_000 }, () => {
+    const rows = plain(3);
+    rows[6] = '^^^^^'; rows[7] = '..+..'; rows[8] = '.....'; rows[9] = '.....'; rows[10] = '.....';
+    expect(drive(mk(rows, 24)).collected.has(id(7))).toBe(true);
+    const flip = plain(4);
+    flip[18] = '==@==';
+    expect(solveGems(mk(flip, 28, [[12, 24]])).ok).toBe(true);
+    expect(solveGems(mk(flip, 28)).ok).toBe(false);
+  });
+
+  it('the gem tool keeps the ground under a gem in the air and puts floor under one on the ground', () => {
+    expect(gemTile(GEM_LOW, '=')).toBe('o');
+    expect(gemTile(GEM_LOW, '.')).toBe('o');
+    expect(gemTile(GEM_MID, '#')).toBe('O');
+    expect(gemTile(GEM_MID, '.')).toBe('*');
+    expect(gemTile(GEM_HIGH, '=')).toBe('@');
+    expect(gemTile(GEM_HIGH, '*')).toBe('+');
+  });
+
+  it('a row keeps one gem: the one nearest the gem before it', () => {
+    expect(oneGemPerRow(['=o=o=', '=====', 'o=o=o', '.*.+.', '==o=='])).toEqual(['=o===', '=====', 'o====', '.*...', '==o==']);
+    const old = sanitize({ id: 'a', rows: ['=o=o=', ...plain(4).slice(1)] })!;
+    expect(old.rows.every((r) => gemLanes(r).length < 2)).toBe(true);
+    expect(old.rows[0]).toBe('=o===');
+  });
+
+  it('the gem bot collects every gem, and names the gem that cannot be had', { timeout: 60_000 }, () => {
+    const rows = plain(4);
+    rows[6] = '=o==='; rows[12] = '===o='; rows[19] = '..*..'; rows[20] = '.....'; rows[30] = '==O==';
+    const good = solveGems(mk(rows));
+    expect(good.ok).toBe(true);
+    expect(good.gems).toBe(4);
+    // two gems one row apart at opposite edges, and a high gem with nothing to climb
+    const far = plain(4);
+    far[6] = 'o===='; far[7] = '====o';
+    expect(solveGems(mk(far)).missed).toEqual({ row: 7, lane: 4 });
+    const high = plain(4);
+    high[6] = '=o==='; high[18] = '==@==';
+    const res = solveGems(mk(high));
+    expect(res.ok).toBe(false);
+    expect(res.missed).toEqual({ row: 18, lane: 2 });
+    // the track itself is fine
+    expect(solve(mk(high)).ok).toBe(true);
+  });
+
+  it('the official tracks never come near the no-progress limit of the gem check', { timeout: 60_000 }, () => {
+    for (const def of LEVELS) for (const onBeat of [true, false]) {
+      const s = new Solver(new Level(def), { onBeat, gems: true });
+      s.run();
+      expect(s.ok, def.name).toBe(true);
+      expect(s.maxStall, def.name).toBeLessThan(GEM_STALL / 3);
+    }
+  });
+});
+
+describe('rules', () => {
+  it('the official tracks have no rule hints', () => {
+    for (const def of LEVELS) expect(lint(new Level(def)), def.id).toEqual([]);
+  });
+
+  it('names what is off the beat', () => {
+    const rows = plain(4);
+    rows[12] = '.....'; rows[13] = '.....';   // gap starts on a beat row
+    rows[19] = '==o==';                      // gem one row after the beat
+    rows[24] = 'xxxxx';                      // spikes on the first row of a beat
+    rows[32] = 'xxxxx'; rows[33] = 'xxxxx'; rows[34] = 'xxxxx'; // three deep, starting on the right row
+    rows[0] = '==.==';                       // no floor under the ship at the start
+    const codes = lint(mk(rows)).map((i) => `${i.code}@${i.row}`);
+    expect(codes).toContain('gapOnBeat@12');
+    expect(codes).toContain('offBeat@19');
+    expect(codes).toContain('spikeRow@24');
+    expect(codes).toContain('spikeDeep@34');
+    expect(codes).toContain('start@0');
+    expect(codes.filter((c) => c.startsWith('spikeRow')).length).toBe(5);
+  });
+});
+
+describe('figures', () => {
+  it('every editor figure is whole beats and breaks no beat rule on a plain track', () => {
+    for (const speed of [22, 25.6, 30, 36]) for (const f of FIGURES) for (const lane of [0, 2, 4]) {
+      const made = f.build(lane, speed);
+      expect(made.length, f.id).toBe(f.beats * CFG.rowsPerBeat);
+      const rows = plain(4);
+      rows.splice(BAR_ROWS, made.length, ...made);
+      expect(lint(mk(rows, speed)), `${f.id} lane ${lane} at ${speed}`).toEqual([]);
+    }
+  });
+
+  it('every editor figure can be passed on the beat at the speeds it is meant for', () => {
+    for (const speed of [22, 25.6, 30, 36]) for (const f of FIGURES) {
+      if (f.id === 'leap' && speed < 28) continue; // says so in its description
+      const made = f.build(1, speed);
+      const rows = plain(4);
+      rows.splice(BAR_ROWS, made.length, ...made);
+      const res = solve(mk(rows, speed), 6, 0, Infinity, true);
+      expect(res.ok, `${f.id} at ${speed}`).toBe(true);
+    }
+  });
+});
+
+describe('automatic fill', () => {
+  it('follows the energy of the music and leaves built bars alone', () => {
+    const rows = plain(8);
+    rows[2 * BAR_ROWS + 3] = '##=##';
+    const mine = rows.slice(2 * BAR_ROWS, 3 * BAR_ROWS);
+    const out = autoFill(rows, [1, 1, 3, 3, 3, 1, 3, 3], 30, 5);
+    expect(out.length).toBe(rows.length);
+    expect(out.slice(2 * BAR_ROWS, 3 * BAR_ROWS)).toEqual(mine);
+    const busy = (b: number) => out.slice(b * BAR_ROWS, (b + 1) * BAR_ROWS).filter((r) => /[^=oO]/.test(r)).length;
+    expect(busy(0)).toBe(0);
+    expect(busy(3) + busy(4)).toBeGreaterThan(busy(1) + busy(5));
+    expect(isPlainBar(out.slice(BAR_ROWS, 2 * BAR_ROWS))).toBe(false);
+    expect(autoFill(rows, [1, 1, 3, 3, 3, 1, 3, 3], 30, 5)).toEqual(out);
+  });
+
+  for (const speed of [19, 23, 25.6, 30, 34.8, 38]) {
+    it(`gives a track the rhythm bot and the 100 ms bot finish at ${speed} m/s`, async () => {
+      for (const seed of [1, 2, 3]) {
+        const bars = 24;
+        const energy = Array.from({ length: bars }, (_, b) => 1 + (((b >> 2) + seed) % 3));
+        const res = await autoBuild(plain(bars), energy, speed, seed, (rows) => mk(rows, speed));
+        expect(res.ok, `seed ${seed} stuck in bar ${res.stuckBar + 1}`).toBe(true);
+        expect(lint(mk(res.rows, speed)), `seed ${seed}`).toEqual([]);
+        const slow = new Solver(mk(res.rows, speed), { hold: 12, stall: CHECK_STALL });
+        slow.run();
+        expect(slow.ok, `seed ${seed}: 100 ms bot stuck at row ${Math.floor(slow.furthest / CFG.tileL)}`).toBe(true);
+        expect(new Level({ id: 't', name: 'T', world: 0, speed, song: 'cyan', rows: res.rows }).checkpoints.length).toBeGreaterThan(bars / 2);
+      }
+    }, 120_000);
+  }
+
+  it('reports the bar when the trouble is in what the player built', async () => {
+    const rows = plain(8);
+    for (let r = 4 * BAR_ROWS + 1; r < 4 * BAR_ROWS + 9; r++) rows[r] = '.....';
+    const res = await autoBuild(rows, Array(8).fill(2), 28, 3, (r) => mk(r));
+    expect(res.ok).toBe(false);
+    expect(res.stuckBar).toBe(4);
+  }, 60_000);
+});
+
+describe('custom tracks', () => {
+  const music: TrackMusic = { name: 'song', bpm: 128, t0: 0.25, first: 4, duration: 60, loud: '9'.repeat(40) + '3'.repeat(16) + '9'.repeat(70), hits: '5'.repeat(126) };
+
+  it('take tempo, start and intensity from the music', () => {
+    expect(musicStart(music)).toBeCloseTo(0.25 + (4 * 60) / 128, 6);
+    expect(musicBars(music)).toBe(30);
+    const e = musicEnergy(music, 16);
+    expect(e.slice(9, 13)).toEqual([1, 1, 1, 1]);
+    expect(e[0]).toBe(3);
+    const c = { ...blankLevel('a1', 'MINE', 16), music, speed: music.bpm / 5, flipRows: [...Array.from({ length: 24 }, (_, k) => 48 + k), 110, 111] };
+    const def = toDef(c);
+    expect(def.id).toBe('custom:a1');
+    expect(def.energy).toBe(e.join(''));
+    expect(def.flips).toEqual([[48, 72], [110, 112]]);
+    const level = new Level(def);
+    expect(level.bpm).toBeCloseTo(128, 6);
+    expect(level.bars).toBe(16);
+    expect(level.energyOf(10)).toBe(1);
+  });
+
+  it('flip zones are runs of rows, never over the start', () => {
+    expect(flipRanges([], 96)).toEqual([]);
+    expect(flipRanges([0, 1, 2, 3, 4, 30, 31, 50], 96)).toEqual([[3, 5], [30, 32], [50, 51]]);
+  });
+
+  it('an air block is driven under and kills a ship that jumps into it', () => {
+    const rows = Array<string>(4 * BAR_ROWS).fill(F);
+    rows[13] = 'nnnnn';
+    const drive = new Sim(mk(rows));
+    while (drive.s.alive && drive.s.z < 80) drive.step({ steer: 0, jumpPressed: false, jumpHeld: false });
+    expect(drive.s.alive, 'driving under').toBe(true);
+    const jump = new Sim(mk(rows));
+    while (jump.s.alive && jump.s.z < 80) jump.step({ steer: 0, jumpPressed: jump.s.z > 47 && jump.s.grounded, jumpHeld: false });
+    expect(jump.s.alive, 'jumping into it').toBe(false);
+    expect(Math.floor(jump.s.z / CFG.tileL)).toBeGreaterThanOrEqual(12);
+    expect(Math.floor(jump.s.z / CFG.tileL)).toBeLessThanOrEqual(13);
+    // and the bots know to stay down
+    expect(solve(mk(rows), 6, 0, Infinity, true).ok).toBe(true);
+  });
+
+  it('the top of an air block is a platform: reached from a block, driven across and left alive', () => {
+    const rows = Array<string>(4 * BAR_ROWS).fill(F);
+    for (const r of [12, 13, 14]) rows[r] = '#####';
+    for (const r of [16, 17, 18, 19, 20]) rows[r] = 'nnnnn';
+    const level = mk(rows);
+    // onto the blocks, then off their top and down onto the air blocks
+    const sim = new Sim(level);
+    const jumps = [10.5, 14.5];
+    let top = 0, onTop = 0, ring = -1;
+    while (sim.s.alive && !sim.s.finished) {
+      const press = jumps.length > 0 && sim.s.z >= jumps[0] * CFG.tileL;
+      if (press) jumps.shift();
+      sim.step({ steer: 0, jumpPressed: press, jumpHeld: false });
+      const row = Math.floor(sim.s.z / CFG.tileL);
+      if (row >= 16 && row <= 20) {
+        top = Math.max(top, sim.s.y);
+        if (sim.s.grounded) { onTop++; expect(sim.s.y).toBe(CFG.airHi); }
+        // the landing ring is drawn on the top while the ship is above it
+        else if (ring < 0) ring = level.heightAt(sim.s.x, sim.s.z, 0, sim.s.y)!;
+      }
+    }
+    expect(sim.s.finished, `lost at row ${(sim.s.z / CFG.tileL).toFixed(1)}, height ${sim.s.y.toFixed(2)}`).toBe(true);
+    expect(onTop).toBeGreaterThan(10);
+    expect(ring).toBe(CFG.airHi);
+    // a jump from the road still cannot get onto it: at every moment of take-off it ends in the block or under it
+    for (let from = 12; from < 20; from += 0.125) {
+      const flat = Array<string>(4 * BAR_ROWS).fill(F);
+      for (const r of [16, 17, 18, 19, 20]) flat[r] = 'nnnnn';
+      const s2 = new Sim(mk(flat));
+      let done = false, landed = false;
+      while (s2.s.alive && !s2.s.finished) {
+        const press = !done && s2.s.z >= from * CFG.tileL;
+        if (press) done = true;
+        s2.step({ steer: 0, jumpPressed: press, jumpHeld: false });
+        if (s2.s.grounded && s2.s.y > 1) landed = true;
+      }
+      expect(landed, `jump at row ${from}`).toBe(false);
+    }
+    // driving off a block straight into an air block is still a crash
+    const wall = Array<string>(4 * BAR_ROWS).fill(F);
+    for (const r of [12, 13, 14]) wall[r] = '#####';
+    wall[15] = 'nnnnn';
+    const s3 = new Sim(mk(wall));
+    let pressed = false;
+    while (s3.s.alive && !s3.s.finished) { const p = !pressed && s3.s.z >= 10.5 * CFG.tileL; if (p) pressed = true; s3.step({ steer: 0, jumpPressed: p, jumpHeld: false }); }
+    expect(s3.s.alive).toBe(false);
+  });
+
+  it('a jump onto a block that comes up a little short still lands on top', () => {
+    for (const speed of [24, 30, 34]) {
+      const rows = Array<string>(4 * BAR_ROWS).fill(F);
+      for (const r of [12, 13, 14]) rows[r] = '#####';
+      let ok = 0;
+      const lost: string[] = [];
+      for (let from = 7; from < 12; from += 0.125) {
+        const sim = new Sim(mk(rows, speed));
+        let pressed = false, maxY = 0;
+        while (sim.s.alive && !sim.s.finished) {
+          const p = !pressed && sim.s.z >= from * CFG.tileL;
+          if (p) pressed = true;
+          sim.step({ steer: 0, jumpPressed: p, jumpHeld: false });
+          if (sim.s.z < 12 * CFG.tileL) maxY = Math.max(maxY, sim.s.y);
+        }
+        if (sim.s.alive) ok++;
+        // a ship that was ever within the assist of the top when it got there must not crash
+        else if (sim.s.y >= CFG.blockH - CFG.ledgeAssist) lost.push(`${from}: ${sim.s.y.toFixed(2)}`);
+      }
+      expect(lost, `speed ${speed}`).toEqual([]);
+      expect(ok, `speed ${speed}`).toBeGreaterThan(20);
+    }
+    // driving into a block on the road is still a crash
+    const wall = Array<string>(4 * BAR_ROWS).fill(F);
+    wall[12] = '#####';
+    const s = new Sim(mk(wall));
+    while (s.s.alive && !s.s.finished) s.step({ steer: 0, jumpPressed: false, jumpHeld: false });
+    expect(s.s.alive).toBe(false);
+  });
+
+  it('stored data is rebuilt defensively', () => {
+    expect(sanitize(null)).toBeNull();
+    expect(sanitize({ id: 'x' })).toBeNull();
+    const c = sanitize({ id: 'x', name: 'N', rows: ['=====', '==?==', 'short', 7, ...Array(60).fill('.....')], speed: 500, world: -3, flipBars: [1, 99, 'a'], music: { bpm: 'fast' } })!;
+    expect(c.rows.length).toBe(5 * BAR_ROWS);
+    expect(c.rows.slice(0, 5)).toEqual([F, F, F, F, '.....']);
+    expect(c.speed).toBe(38);
+    expect(c.world).toBe(0);
+    expect(c.flipRows).toEqual(Array.from({ length: 12 }, (_, k) => 12 + k));
+    expect(c.music).toBeUndefined();
+    expect(() => new Level(toDef(c))).not.toThrow();
+    const withMusic = sanitize({ id: 'y', rows: Array(48).fill(F), speed: 24, music })!;
+    expect(withMusic.speed).toBeCloseTo(25.6, 6);
+  });
+});

@@ -1,0 +1,11 @@
+import puppeteer from 'puppeteer-core';
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage();
+await p.setViewport({ width: 844, height: 390 });
+await p.goto(process.argv[2] + '?debug', { waitUntil: 'load' });
+await new Promise((r) => setTimeout(r, 2500));
+await p.evaluate(() => document.querySelectorAll('.card')[1].click());
+await new Promise((r) => setTimeout(r, 1200));
+await p.evaluate(() => { const g = window.__game; g.mode = 'pause'; g.view.onEvent({ type: 'crash' }, g.pose(1)); const q = { ...g.pose(1), alive: false }; for (let i = 0; i < 9; i++) g.view.frame(1 / 60, q, 5, 0.3, false); });
+await p.screenshot({ path: process.argv[3] + '/boom.png' });
+await b.close();
