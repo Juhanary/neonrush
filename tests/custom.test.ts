@@ -277,6 +277,54 @@ describe('custom tracks', () => {
     expect(solve(mk(rows), 6, 0, Infinity, true).ok).toBe(true);
   });
 
+  it('the top of an air block is a platform: reached from a block, driven across and left alive', () => {
+    const rows = Array<string>(4 * BAR_ROWS).fill(F);
+    for (const r of [12, 13, 14]) rows[r] = '#####';
+    for (const r of [16, 17, 18, 19, 20]) rows[r] = 'nnnnn';
+    const level = mk(rows);
+    // onto the blocks, then off their top and down onto the air blocks
+    const sim = new Sim(level);
+    const jumps = [10.5, 14.5];
+    let top = 0, onTop = 0, ring = -1;
+    while (sim.s.alive && !sim.s.finished) {
+      const press = jumps.length > 0 && sim.s.z >= jumps[0] * CFG.tileL;
+      if (press) jumps.shift();
+      sim.step({ steer: 0, jumpPressed: press, jumpHeld: false });
+      const row = Math.floor(sim.s.z / CFG.tileL);
+      if (row >= 16 && row <= 20) {
+        top = Math.max(top, sim.s.y);
+        if (sim.s.grounded) { onTop++; expect(sim.s.y).toBe(CFG.airHi); }
+        // the landing ring is drawn on the top while the ship is above it
+        else if (ring < 0) ring = level.heightAt(sim.s.x, sim.s.z, 0, sim.s.y)!;
+      }
+    }
+    expect(sim.s.finished, `lost at row ${(sim.s.z / CFG.tileL).toFixed(1)}, height ${sim.s.y.toFixed(2)}`).toBe(true);
+    expect(onTop).toBeGreaterThan(10);
+    expect(ring).toBe(CFG.airHi);
+    // a jump from the road still cannot get onto it: at every moment of take-off it ends in the block or under it
+    for (let from = 12; from < 20; from += 0.125) {
+      const flat = Array<string>(4 * BAR_ROWS).fill(F);
+      for (const r of [16, 17, 18, 19, 20]) flat[r] = 'nnnnn';
+      const s2 = new Sim(mk(flat));
+      let done = false, landed = false;
+      while (s2.s.alive && !s2.s.finished) {
+        const press = !done && s2.s.z >= from * CFG.tileL;
+        if (press) done = true;
+        s2.step({ steer: 0, jumpPressed: press, jumpHeld: false });
+        if (s2.s.grounded && s2.s.y > 1) landed = true;
+      }
+      expect(landed, `jump at row ${from}`).toBe(false);
+    }
+    // driving off a block straight into an air block is still a crash
+    const wall = Array<string>(4 * BAR_ROWS).fill(F);
+    for (const r of [12, 13, 14]) wall[r] = '#####';
+    wall[15] = 'nnnnn';
+    const s3 = new Sim(mk(wall));
+    let pressed = false;
+    while (s3.s.alive && !s3.s.finished) { const p = !pressed && s3.s.z >= 10.5 * CFG.tileL; if (p) pressed = true; s3.step({ steer: 0, jumpPressed: p, jumpHeld: false }); }
+    expect(s3.s.alive).toBe(false);
+  });
+
   it('stored data is rebuilt defensively', () => {
     expect(sanitize(null)).toBeNull();
     expect(sanitize({ id: 'x' })).toBeNull();

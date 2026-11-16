@@ -383,7 +383,7 @@ export class View {
     }
 
     // landing marker while airborne
-    const ground = this.level!.heightAt(p.x, p.z, p.t);
+    const ground = this.level!.heightAt(p.x, p.z, p.t, p.y);
     this.marker.visible = p.alive && !p.grounded && ground !== null && p.y > ground + 0.25;
     if (this.marker.visible) {
       this.marker.position.set(sx, ground! + 0.04, sz);

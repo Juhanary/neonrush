@@ -82,7 +82,7 @@ export class Sim {
   }
 
   private h(x: number, z: number): number | null {
-    return this.level.heightAt(x, z, this.level.beatAt(this.s.z));
+    return this.level.heightAt(x, z, this.level.beatAt(this.s.z), this.s.y);
   }
 
   step(input: InputState): void {
@@ -205,8 +205,9 @@ export class Sim {
       }
     }
 
-    // --- air blocks: the same footprint, when the ship is at their height ---
-    if (s.y + CFG.shipH > CFG.airLo && s.y < CFG.airHi) {
+    // --- air blocks: the same footprint, when the ship is at their height. From the step tolerance under
+    // the top upwards the block is a platform instead (Level.heightAt): it can be landed on and driven across.
+    if (s.y + CFG.shipH > CFG.airLo && s.y < CFG.airHi - CFG.stepTol) {
       const hx = CFG.shipHalfW - CFG.spikeInset, hz = CFG.shipHalfL - CFG.spikeInset;
       for (const [dx, dz] of [[-hx, hz], [hx, hz], [-hx, -hz], [hx, -hz], [0, 0]]) {
         if (L.tile(L.rowOf(s.z + dz), L.laneOf(s.x + dx)) === 'n') {

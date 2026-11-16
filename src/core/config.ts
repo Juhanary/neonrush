@@ -15,8 +15,10 @@ export const CFG = {
   spikeH: 1.0,
   spikeInset: 0.2,
   /**
-   * Air block ('n'): a block floating over plain road. The ship drives under it; touching it (a jump, a
-   * pad flight, the drift in a flip zone) destroys the ship. It spans airLo..airHi above the road and the
+   * Air block ('n'): a block floating over plain road. The ship drives under it; touching its front, sides
+   * or underside (a jump from the road, a pad flight, the drift in a flip zone) destroys the ship. Its top is
+   * a platform: a ship that comes down on it from above (a jump from the top of a block reaches 4.1 m, one
+   * from the road only 2.5 m) lands and drives across. It spans airLo..airHi above the road and the
    * ship is `shipH` tall, so a ship on the ground clears it by 0.8 m. Same footprint rule as spikes.
    */
   airLo: 1.6,
