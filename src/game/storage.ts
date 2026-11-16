@@ -10,6 +10,8 @@ export interface Save {
   practiceOn: boolean;
   practice: Record<string, number>;
   lang?: 'en' | 'fi';
+  /** Coins used in the shop. Coins held = coins earned (see profile.ts) minus this. */
+  spent?: number;
 }
 
 const KEY = 'neonrush.save.v1';
