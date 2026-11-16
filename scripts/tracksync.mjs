@@ -29,7 +29,7 @@ res.music = await p.evaluate(async () => {
   }
   const { music } = window.__analyse(d, sr, 'click');
   const id = 'synctest';
-  g.store.put({ v: 1, id, name: 'SYNC', world: 2, speed: music.bpm / 5, song: 'toxic', rows: Array(192).fill('====='), flipBars: [], music, updated: 0 });
+  g.store.put({ v: 1, id, name: 'SYNC', world: 2, speed: music.bpm / 5, song: 'toxic', rows: Array(192).fill('====='), flipRows: [], music, updated: 0 });
   g.tracks.set(id, buf);
   await g.playCustom(id);
   return { bpm: music.bpm, t0: music.t0, first: music.first, mode: g.mode };

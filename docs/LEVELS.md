@@ -13,7 +13,7 @@ Neonrush is a rhythm game: the road is the sheet music. Work in bars and beats, 
 
 Tempo is not chosen, it follows from speed: `BPM = speed × 5` (24 m/s = 120 BPM, 33 m/s = 165 BPM). Speeds so far: 24, 26, 28, 29, 30, 31, 32, 33.
 
-Tile characters: `.` gap, `=` floor, `#` block, `^` jump pad, `>` boost pad, `o` gem, `O` high gem, `*` gem over a gap, `+` gem on a pad arc, `m` moving road, `i` ice, `|` rail, `x` spikes.
+Tile characters: `.` gap, `=` floor, `#` block, `^` jump pad, `>` boost pad, `o` gem, `O` high gem, `*` gem over a gap, `+` gem on a pad arc, `m` moving road, `i` ice, `|` rail, `x` spikes. `n` air block (floats over floor: drive under, never touch; editor tracks only so far).
 
 ## Rules (the tests enforce the ones marked T)
 

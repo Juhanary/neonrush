@@ -12,7 +12,7 @@ import type { LevelDef } from './level';
  */
 
 /** Every tile character a track may contain. */
-export const TILES = '.=#^>oO*+mi|x';
+export const TILES = '.=#^>oO*+mi|xn';
 /** Speeds the movement tuning can be played at, and the tempo range that gives (one octave). */
 export const MIN_SPEED = 19, MAX_SPEED = 38;
 export const MIN_BPM = MIN_SPEED * 5, MAX_BPM = MAX_SPEED * 5;
@@ -48,14 +48,14 @@ export interface CustomLevel {
    */
   song: string;
   rows: string[];
-  /** Bars inside a gravity-flip zone. */
-  flipBars: number[];
+  /** Rows inside a gravity-flip zone, ascending. A zone is any run of them, from two rows up. */
+  flipRows: number[];
   music?: TrackMusic;
   updated: number;
 }
 
 export function blankLevel(id: string, name: string, bars = 16): CustomLevel {
-  return { v: 1, id, name, world: 0, speed: 24, song: 'drift', rows: Array<string>(bars * BAR_ROWS).fill(F), flipBars: [], updated: 0 };
+  return { v: 1, id, name, world: 0, speed: 24, song: 'drift', rows: Array<string>(bars * BAR_ROWS).fill(F), flipRows: [], updated: 0 };
 }
 
 export const barsOf = (c: CustomLevel): number => Math.floor(c.rows.length / BAR_ROWS);
@@ -98,16 +98,19 @@ export function musicEnergy(m: TrackMusic, bars: number): number[] {
   return f.map((v) => (v < lo + 0.35 * (hi - lo) ? 1 : v > lo + 0.72 * (hi - lo) ? 3 : 2));
 }
 
-/** Flip zones as row ranges: runs of consecutive flipped bars. */
-export function flipRanges(flipBars: number[], bars: number): [number, number][] {
-  const on = new Set(flipBars);
+/** The ship starts in row 0: no flip zone before this row. */
+export const FLIP_FROM = 3;
+
+/** Flip zones as row ranges: runs of consecutive flipped rows. */
+export function flipRanges(flipRows: number[], rows: number): [number, number][] {
+  const on = new Set(flipRows);
   const out: [number, number][] = [];
-  for (let b = 0; b < bars; b++) {
-    if (!on.has(b)) continue;
-    let e = b;
-    while (on.has(e + 1) && e + 1 < bars) e++;
-    out.push([b * BAR_ROWS, (e + 1) * BAR_ROWS]);
-    b = e;
+  for (let r = FLIP_FROM; r < rows; r++) {
+    if (!on.has(r)) continue;
+    let e = r;
+    while (e + 1 < rows && on.has(e + 1)) e++;
+    out.push([r, e + 1]);
+    r = e;
   }
   return out;
 }
@@ -120,7 +123,7 @@ export function toDef(c: CustomLevel): LevelDef {
   const bars = barsOf(c);
   return {
     id: CUSTOM_PREFIX + c.id, name: c.name, world: c.world, speed: c.speed, song: c.song, rows: c.rows.slice(0, bars * BAR_ROWS),
-    flips: flipRanges(c.flipBars, bars),
+    flips: flipRanges(c.flipRows, bars * BAR_ROWS),
     energy: c.music ? musicEnergy(c.music, bars).join('') : undefined,
   };
 }
@@ -128,7 +131,7 @@ export function toDef(c: CustomLevel): LevelDef {
 /** Rebuild a stored track defensively: storage can hold anything. Returns null when it is not a track. */
 export function sanitize(raw: unknown): CustomLevel | null {
   if (!raw || typeof raw !== 'object') return null;
-  const r = raw as Partial<CustomLevel>;
+  const r = raw as Partial<CustomLevel> & { flipBars?: unknown };
   if (typeof r.id !== 'string' || !Array.isArray(r.rows)) return null;
   const bars = Math.max(MIN_BARS, Math.min(MAX_BARS, Math.floor(r.rows.length / BAR_ROWS)));
   const rows: string[] = [];
@@ -137,6 +140,11 @@ export function sanitize(raw: unknown): CustomLevel | null {
     rows.push(s.length === CFG.lanes && [...s].every((c) => TILES.includes(c)) ? s : F);
   }
   const num = (v: unknown, d: number, lo: number, hi: number) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
+  // flip zones were whole bars in the first version of the editor
+  const flip = new Set<number>();
+  if (Array.isArray(r.flipRows)) { for (const v of r.flipRows) if (Number.isInteger(v)) flip.add(v); }
+  else if (Array.isArray(r.flipBars)) { for (const b of r.flipBars) if (Number.isInteger(b)) for (let k = 0; k < BAR_ROWS; k++) flip.add(b * BAR_ROWS + k); }
+  const flipRows = [...flip].filter((v) => v >= FLIP_FROM && v < bars * BAR_ROWS).sort((a, b) => a - b);
   let music: TrackMusic | undefined;
   const m = r.music as Partial<TrackMusic> | undefined;
   if (m && typeof m.bpm === 'number' && isFinite(m.bpm) && m.bpm > 0 && typeof m.loud === 'string') {
@@ -148,7 +156,7 @@ export function sanitize(raw: unknown): CustomLevel | null {
   return {
     v: 1, id: r.id, name: String(r.name ?? 'TRACK').slice(0, 24), world: Math.round(num(r.world, 0, 0, 99)),
     speed: music ? music.bpm / 5 : num(r.speed, 24, MIN_SPEED, MAX_SPEED), song: typeof r.song === 'string' ? r.song : 'drift', rows,
-    flipBars: Array.isArray(r.flipBars) ? r.flipBars.filter((b) => Number.isInteger(b) && b >= 0 && b < bars) : [],
+    flipRows,
     music, updated: num(r.updated, 0, 0, Number.MAX_SAFE_INTEGER),
   };
 }

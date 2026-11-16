@@ -101,9 +101,10 @@ void main() {
     float head = step(0.0, f) * smoothstep(0.0, 0.03, (0.43 - f) * 0.95 - ax);
     float shaft = step(f, 0.0) * step(-0.43, f) * smoothstep(0.13, 0.1, ax);
     float stream = 0.55 + 0.45 * step(0.5, fract(f * 2.0 - uTime * 3.5));
-    base = hot * 0.14;
-    if (top) base += hot * max(head, shaft) * stream * 1.9;
-    ecol = hot; gain = 2.2;
+    // a dark pad, so the arrow keeps its shape instead of blooming into a white slab
+    base = uFloor * 0.12;
+    if (top) base += hot * max(head, shaft) * stream * 0.95;
+    ecol = hot; gain = 1.1;
   } else if (vKind < 4.5) {     // finish runway
     float chk = mod(floor(vLocal.x * 4.0 + 8.0) + floor(vLocal.z * 4.0 + 8.0), 2.0);
     base = mix(uFloor * 0.6, vec3(0.9), top ? chk * 0.55 : 0.0);
@@ -203,7 +204,8 @@ export class Track {
   private disposables: { dispose(): void }[] = [];
   private spikeMat?: THREE.LineBasicMaterial;
   private upArrows?: THREE.Mesh;
-  private upMat?: THREE.MeshBasicMaterial;
+  private fwdArrows?: THREE.Mesh;
+  private fwdBase = new THREE.Color();
   private spikeBase = new THREE.Color();
   private rings = false;
 
@@ -240,6 +242,8 @@ export class Track {
         else if (t === '|') add(x, -0.2, z, CFG.railHalf * 2, 0.4, CFG.tileL * 1.0, 8);
         else if (t === 'm') add(x, -0.25, z, tw, 0.5, tl, 6, row);
         else add(x, -0.25, z, tw, 0.5, tl, row >= level.length ? 4 : t === '^' ? 2 : t === '>' ? 3 : t === 'i' ? 7 : 0);
+        // air block: a block floating over the road, driven under
+        if (t === 'n') add(x, (CFG.airLo + CFG.airHi) / 2, z, tw, CFG.airHi - CFG.airLo, tl, 1);
       }
     }
     // ---- spikes: two pyramids per tile, in the obstacle colour, with bright edges ----
@@ -274,28 +278,60 @@ export class Track {
       this.group.add(mesh);
     }
 
-    // ---- jump pads: an arrow pointing up stands on every pad tile, so a pad reads as "up" from afar ----
-    const ups: THREE.BufferGeometry[] = [];
-    const arrow = new THREE.Shape();
-    arrow.moveTo(0, 1.5); arrow.lineTo(0.62, 0.78); arrow.lineTo(0.24, 0.78); arrow.lineTo(0.24, 0); arrow.lineTo(-0.24, 0); arrow.lineTo(-0.24, 0.78); arrow.lineTo(-0.62, 0.78); arrow.closePath();
-    const arrowGeo = new THREE.ShapeGeometry(arrow);
+    // ---- pad signs: what a pad does has to read from far away and at speed ----
+    // Jump pad: a big solid arrow pointing up stands on every pad tile, on a dark backing so it shows
+    // against any sky. Boost pad: boards of chevrons pointing forward stand along both sides of the pad.
+    const ups: THREE.BufferGeometry[] = [], upBacks: THREE.BufferGeometry[] = [], fwd: THREE.BufferGeometry[] = [], fwdBacks: THREE.BufferGeometry[] = [];
+    const poly = (pts: number[][]): THREE.ShapeGeometry => {
+      const sh = new THREE.Shape();
+      pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
+      sh.closePath();
+      return new THREE.ShapeGeometry(sh);
+    };
+    const arrowGeo = poly([[0, 2.5], [0.95, 1.35], [0.36, 1.35], [0.36, 0], [-0.36, 0], [-0.36, 1.35], [-0.95, 1.35]]);
+    const arrowBack = poly([[0, 2.85], [1.4, 1.17], [0.54, 1.17], [0.54, -0.16], [-0.54, -0.16], [-0.54, 1.17], [-1.4, 1.17]]);
+    // one chevron, pointing along +x here; turned to point down the road below
+    const chev = poly([[0, 0], [0.55, 0], [1.25, 0.75], [0.55, 1.5], [0, 1.5], [0.7, 0.75]]);
+    const chevBack = poly([[-0.25, -0.18], [0.65, -0.18], [1.55, 0.75], [0.65, 1.68], [-0.25, 1.68], [0.45, 0.75]]);
+    const turn = new THREE.Matrix4().makeRotationY(Math.PI / 2);
     for (let row = 0; row < level.length; row++) {
+      let lo = -1, hi = -1;
       for (let lane = 0; lane < CFG.lanes; lane++) {
-        if (level.tile(row, lane) !== '^') continue;
-        ups.push(arrowGeo.clone().applyMatrix4(new THREE.Matrix4().makeTranslation(level.laneCenter(lane), 0.25, -(row + 0.5) * CFG.tileL)));
+        const t = level.tile(row, lane);
+        if (t === '>') { if (lo < 0) lo = lane; hi = lane; }
+        if (t !== '^') continue;
+        const m = new THREE.Matrix4().makeTranslation(level.laneCenter(lane), 0.45, -(row + 0.5) * CFG.tileL);
+        ups.push(arrowGeo.clone().applyMatrix4(m));
+        upBacks.push(arrowBack.clone().applyMatrix4(m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.06))));
+      }
+      if (lo < 0) continue;
+      for (const [x, away] of [[level.laneCenter(lo) - CFG.tileW / 2 - 0.25, -0.06], [level.laneCenter(hi) + CFG.tileW / 2 + 0.25, 0.06]]) {
+        for (let k = 0; k < 3; k++) {
+          const at = new THREE.Matrix4().makeTranslation(x, 0.35, -(row * CFG.tileL + 0.2 + k * 1.3));
+          fwd.push(chev.clone().applyMatrix4(turn).applyMatrix4(at));
+          fwdBacks.push(chevBack.clone().applyMatrix4(turn).applyMatrix4(at.clone().multiply(new THREE.Matrix4().makeTranslation(away, 0, 0))));
+        }
       }
     }
-    arrowGeo.dispose();
-    if (ups.length) {
-      const g = mergeGeometries(ups)!;
-      ups.forEach((x) => x.dispose());
-      const m = new THREE.MeshBasicMaterial({ color: hdr(pal.accent, 2.0), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    [arrowGeo, arrowBack, chev, chevBack].forEach((g) => g.dispose());
+    const sign = (parts: THREE.BufferGeometry[], color: THREE.Color, opacity: number): THREE.Mesh | undefined => {
+      if (!parts.length) return undefined;
+      const g = mergeGeometries(parts)!;
+      parts.forEach((x) => x.dispose());
+      const m = new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1, side: THREE.DoubleSide });
       this.disposables.push(g, m);
-      this.upArrows = new THREE.Mesh(g, m);
-      this.upArrows.frustumCulled = false;
-      this.upMat = m;
-      this.group.add(this.upArrows);
-    }
+      const mesh = new THREE.Mesh(g, m);
+      mesh.frustumCulled = false;
+      this.group.add(mesh);
+      return mesh;
+    };
+    const dark = new THREE.Color(0x04041a);
+    const upBack = sign(upBacks, dark, 0.8);
+    this.upArrows = sign(ups, hdr(pal.accent, 1.7), 1);
+    if (upBack && this.upArrows) this.upArrows.add(upBack);
+    sign(fwdBacks, dark, 0.8);
+    this.fwdArrows = sign(fwd, new THREE.Color(pal.edge).lerp(new THREE.Color(0xffffff), 0.6).multiplyScalar(1.7), 1);
+    if (this.fwdArrows) this.fwdBase.copy((this.fwdArrows.material as THREE.MeshBasicMaterial).color);
 
     // ---- gravity-flip zones: a deadly ceiling grid and a portal at each end ----
     for (const [from, to] of level.def.flips ?? []) {
@@ -546,12 +582,9 @@ export class Track {
     u.uTime.value = time; u.uBeat.value = beat; u.uShipZ.value = shipZ;
     u.uPulse.value.z += dt;
     if (this.spikeMat) this.spikeMat.color.copy(this.spikeBase).multiplyScalar(0.8 + 0.5 * beat);
-    if (this.upArrows && this.upMat) {
-      // the arrows rise and fade, again and again
-      const k = (time * 1.3) % 1;
-      this.upArrows.position.y = k * 0.7;
-      this.upMat.opacity = 0.25 + 0.7 * (1 - k * k);
-    }
+    // jump arrows hop upwards on a loop; boost chevrons flash fast, like a running light
+    if (this.upArrows) { const k = (time * 1.6) % 1; this.upArrows.position.y = 0.55 * (1 - (1 - k) * (1 - k)); }
+    if (this.fwdArrows) (this.fwdArrows.material as THREE.MeshBasicMaterial).color.copy(this.fwdBase).multiplyScalar(0.65 + 0.35 * Math.sign(Math.sin(time * 14)));
     for (const sp of this.spinners) sp.o.rotation.z += sp.s * dt;
     const s = 1 + beat * 0.06;
     this.portal.scale.set(s, s, 1);

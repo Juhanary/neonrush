@@ -1,28 +1,28 @@
 import './editor.css';
 import { analyse, envelopes, gridFeatures, mixDown, regrid, type Envelopes } from '../audio/analyze';
 import type { GameAudio } from '../audio/audio';
-import { MOODS, describeSong, genName, songByName, type Mood } from '../audio/generate';
+import { MOODS, genName, songByName, type Mood } from '../audio/generate';
 import { checkSong } from '../audio/lint';
 import { SONGS } from '../audio/songs';
-import { CHECK_STALL, autoBuild } from '../core/auto';
+import { CHECK_STALL } from '../core/auto';
 import { BAR_ROWS, BEAT_LEN, CFG } from '../core/config';
 import {
-  MAX_BARS, MAX_BPM, MAX_SPEED, MIN_BARS, MIN_BPM, MIN_SPEED, barsOf, blankLevel, musicBars, musicEnergy, musicStart, toDef, type CustomLevel,
+  FLIP_FROM, MAX_BARS, MAX_BPM, MAX_SPEED, MIN_BARS, MIN_BPM, MIN_SPEED, barsOf, blankLevel, flipRanges, musicBars, musicStart, toDef, type CustomLevel,
 } from '../core/custom';
-import { F, FIGURES, isPlainBar, type Figure } from '../core/figures';
+import { F } from '../core/figures';
 import { Level } from '../core/level';
 import { lint, type Issue } from '../core/rules';
 import { Solver, type SolveOptions } from '../core/solve';
 import type { CustomStore } from '../game/custom-store';
 import type { Tracks } from '../game/tracks';
 import { PALETTES, type Palette } from '../render/palette';
-import { css, drawRows, drawTile } from './draw';
+import { css, drawTile } from './draw';
 
 /**
  * THE LEVEL EDITOR (docs/EDITOR.md).
  *
  * The track is shown from above with the driving direction to the right: five lanes, three columns to a
- * beat, twelve to a bar. It is built from single tiles ("blocks") or from figures, which are whole beats
+ * beat, twelve to a bar. It is built one tile ("block") at a time, section by section; lighter columns mark the beat rows
  * and always sit on the beat. The player's own music is analysed (audio/analyze.ts) and sets the tempo and
  * so the speed, and its loudness is drawn above the track, beat by beat, so the track can be built to it.
  *
@@ -40,20 +40,20 @@ export interface EditorHost {
   changed(id: string): void;
 }
 
-type Tool = { kind: 'pan' } | { kind: 'tile'; t: string } | { kind: 'fig'; f: Figure } | { kind: 'flip' };
-interface Snap { rows: string[]; flipBars: number[] }
+type Tool = { kind: 'pan' } | { kind: 'tile'; t: string } | { kind: 'flip' };
+interface Snap { rows: string[]; flipRows: number[] }
 type Drag =
   | { kind: 'pan'; x: number; scroll: number }
   | { kind: 'map' }
   | { kind: 'paint'; t: string; row: number; lane: number }
-  | { kind: 'fig' }
+  | { kind: 'flip'; on: boolean; row: number }
   | null;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const pause = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 /** Canvas layout, in CSS pixels: the music strip on top, the minimap at the bottom, the lanes between. */
-const STRIP = 30, MAP = 14, GAP = 6;
+const STRIP = 30, MAP = 34, GAP = 6;
 const ZOOMS = [34, 20];
 /** A new track is one section long; the player adds sections at the end as the track grows. */
 const SECTION = 4;
@@ -63,12 +63,10 @@ const ADD_W = 104;
 const ICON = 1.3;
 const TILES: [string, string][] = [
   ['=', 'floor'], ['.', 'gap'], ['#', 'block'], ['x', 'spike'], ['o', 'gem'], ['O', 'gemHigh'], ['*', 'gemAir'], ['+', 'gemPad'],
-  ['^', 'pad'], ['>', 'boost'], ['i', 'ice'], ['m', 'move'], ['|', 'rail'],
+  ['^', 'pad'], ['>', 'boost'], ['n', 'air'], ['i', 'ice'], ['m', 'move'], ['|', 'rail'],
 ];
 /** Intensity per bar while a song is auditioned in the editor: every layer of the arrangement within eight bars. */
 const AUDITION = '11223333';
-/** Intensity per bar for the automatic fill of a track without a music file: build-up in four-bar phrases. */
-const ARC = '1222223322333332';
 
 export class Editor {
   private root = $('editor');
@@ -84,12 +82,10 @@ export class Editor {
   private sig = '';
   private undo: Snap[] = []; private redo: Snap[] = [];
   private tool: Tool = { kind: 'tile', t: '#' };
-  private tab: 'tiles' | 'figs' = 'tiles';
   private cw = ZOOMS[0];
   private scroll = -20;
   private ptrs = new Map<number, { x: number; y: number }>();
   private drag: Drag = null;
-  private ghost: { row: number; rows: string[] } | null = null;
   private issues: Issue[] = [];
   private issueAt = 0;
   private stuckRow = -1;
@@ -112,14 +108,12 @@ export class Editor {
     $('edUndo').addEventListener('click', () => this.step(this.undo, this.redo));
     $('edRedo').addEventListener('click', () => this.step(this.redo, this.undo));
     $('edZoom').addEventListener('click', () => this.zoom());
-    $('edSet').addEventListener('click', () => this.panel(true));
-    $('edClose').addEventListener('click', () => this.panel(false));
-    $('edAuto').addEventListener('click', () => void this.auto());
+    $('edSet').addEventListener('click', () => this.panel('music'));
+    $('edTrack').addEventListener('click', () => this.panel('track'));
+    document.querySelectorAll('.edClose').forEach((b) => b.addEventListener('click', () => this.panel(null)));
     $('edCheck').addEventListener('click', () => void this.check());
     $('edTest').addEventListener('click', () => this.test());
     $('edStatus').addEventListener('click', () => this.nextIssue());
-    $('edTabTiles').addEventListener('click', () => { this.tab = 'tiles'; this.palette(); });
-    $('edTabFigs').addEventListener('click', () => { this.tab = 'figs'; this.palette(); });
     const name = $<HTMLInputElement>('edName');
     name.addEventListener('input', () => { this.lv.name = name.value.trim().slice(0, 24) || this.host.t('ed.track'); this.persist(); });
     name.addEventListener('keydown', (e) => { if (e.key === 'Enter') name.blur(); });
@@ -182,7 +176,6 @@ export class Editor {
       this.sig = this.signature();
       // building starts one block at a time
       this.tool = { kind: 'tile', t: '#' };
-      this.tab = 'tiles';
       if (this.lv.music) void this.loadMusic();
     }
     this.note = src ? '' : this.t('ed.intro');
@@ -191,7 +184,7 @@ export class Editor {
     this.deleteArmed = false;
     this.root.hidden = false;
     $<HTMLInputElement>('edName').value = this.lv.name;
-    this.panel(false);
+    this.panel(null);
     this.theme();
     this.resize();
     this.rebuild();
@@ -207,7 +200,7 @@ export class Editor {
     this.host.exit();
   }
 
-  private signature(): string { return JSON.stringify([this.lv.rows, this.lv.flipBars, this.lv.speed]); }
+  private signature(): string { return JSON.stringify([this.lv.rows, this.lv.flipRows, this.lv.speed]); }
 
   private reportChange(): void {
     const s = this.signature();
@@ -248,7 +241,7 @@ export class Editor {
   }
 
   private snap(): void {
-    this.undo.push({ rows: this.lv.rows.slice(), flipBars: this.lv.flipBars.slice() });
+    this.undo.push({ rows: this.lv.rows.slice(), flipRows: this.lv.flipRows.slice() });
     if (this.undo.length > 80) this.undo.shift();
     this.redo.length = 0;
   }
@@ -256,8 +249,8 @@ export class Editor {
   private step(from: Snap[], to: Snap[]): void {
     const s = from.pop();
     if (!s) return;
-    to.push({ rows: this.lv.rows.slice(), flipBars: this.lv.flipBars.slice() });
-    this.lv.rows = s.rows; this.lv.flipBars = s.flipBars;
+    to.push({ rows: this.lv.rows.slice(), flipRows: this.lv.flipRows.slice() });
+    this.lv.rows = s.rows; this.lv.flipRows = s.flipRows;
     this.changedRows();
   }
 
@@ -275,7 +268,7 @@ export class Editor {
     const rows = this.lv.rows.slice(0, n * BAR_ROWS);
     while (rows.length < n * BAR_ROWS) rows.push(F);
     this.lv.rows = rows;
-    this.lv.flipBars = this.lv.flipBars.filter((b) => b < n);
+    this.lv.flipRows = this.lv.flipRows.filter((r) => r < n * BAR_ROWS);
     this.changedRows();
     this.scrollTo(this.scroll);
     this.refreshPanel();
@@ -285,7 +278,7 @@ export class Editor {
     const lv = this.lv, bars = barsOf(lv);
     const secs = Math.round((bars * BAR_ROWS * CFG.tileL) / lv.speed);
     const bpm = lv.speed * 5;
-    $('edInfo').textContent = `${+bpm.toFixed(1)} BPM · ${+lv.speed.toFixed(1)} m/s · ${bars} ${this.t('ed.bars')} · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    $('edTrackInfo').textContent = `${+bpm.toFixed(1)} BPM · ${+lv.speed.toFixed(1)} m/s · ${bars} ${this.t('ed.bars')} · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     $('edUndo').classList.toggle('off', !this.undo.length);
     $('edRedo').classList.toggle('off', !this.redo.length);
   }
@@ -294,7 +287,7 @@ export class Editor {
 
   private toolHelp(): string {
     const tl = this.tool;
-    const k = tl.kind === 'pan' ? 'ed.t.pan' : tl.kind === 'flip' ? 'ed.t.flip' : tl.kind === 'tile' ? 'ed.t.' + TILES.find(([c]) => c === tl.t)![1] : 'ed.f.' + tl.f.id;
+    const k = tl.kind === 'pan' ? 'ed.t.pan' : tl.kind === 'flip' ? 'ed.t.flip' : 'ed.t.' + TILES.find(([c]) => c === tl.t)![1];
     return `${this.t(k + '.n')}: ${this.t(k + '.d')}`;
   }
 
@@ -331,7 +324,7 @@ export class Editor {
     this.status();
   }
 
-  // ------------------------------------------------------------------ check, automatic fill, test drive
+  // ------------------------------------------------------------------ check and test drive
 
   private async solve(level: Level, opt: SolveOptions, gen: number): Promise<Solver | null> {
     const s = new Solver(level, { ...opt, stall: CHECK_STALL });
@@ -363,33 +356,6 @@ export class Editor {
       this.center(this.stuckRow);
     }
     this.draw();
-  }
-
-  /** Fill the bars that are still plain floor with figures that follow the music, checked by the rhythm bot. */
-  private async auto(): Promise<void> {
-    if (this.busy) return;
-    const lv = this.lv, bars = barsOf(lv);
-    const plain = Array.from({ length: bars }, (_, b) => isPlainBar(lv.rows.slice(b * BAR_ROWS, (b + 1) * BAR_ROWS)));
-    if (!plain.some(Boolean)) { this.say(this.t('ed.autoNone'), false); return; }
-    this.busy = true;
-    this.stuckRow = -1;
-    this.say(this.t('ed.autoBusy'), true);
-    await pause();
-    const gen = this.gen;
-    const energy = lv.music ? musicEnergy(lv.music, bars) : Array.from({ length: bars }, (_, b) => +ARC[b % ARC.length]);
-    const def = toDef(lv);
-    const res = await autoBuild(lv.rows, energy, lv.speed, (Date.now() & 0xfffff) + 1, (rows) => new Level({ ...def, rows }), pause);
-    this.busy = false;
-    if (gen !== this.gen) { this.note = ''; this.status(); return; }
-    this.snap();
-    lv.rows = res.rows;
-    this.changedRows();
-    if (res.ok) this.say(this.t('ed.autoOk'), true);
-    else {
-      this.stuckRow = Math.min(lv.rows.length - 1, (res.stuckBar + 1) * BAR_ROWS - 1);
-      this.say(this.t('ed.stuck', res.stuckBar + 1), false);
-      this.center(this.stuckRow);
-    }
   }
 
   private test(): void {
@@ -571,10 +537,13 @@ export class Editor {
     this.host.exit();
   }
 
-  private panel(show: boolean): void {
-    $('edPanel').hidden = !show;
+  /** The music sheet, the track sheet, or none. */
+  private panel(which: 'music' | 'track' | null): void {
+    $('edPanel').hidden = !which;
+    $('edSheetMusic').hidden = which !== 'music';
+    $('edSheetTrack').hidden = which !== 'track';
     this.deleteArmed = false;
-    if (show) this.refreshPanel();
+    if (which) { this.info(); this.refreshPanel(); }
     else { this.stopSong(); this.host.audio.stopPreview(); }
   }
 
@@ -582,7 +551,9 @@ export class Editor {
     if ($('edPanel').hidden) return;
     const lv = this.lv, m = lv.music;
     $('edMusicCtl').hidden = !m;
-    $('edSpeedRow').hidden = !!m;
+    // with a file of your own the game song is only a stand-in: keep the sheet to one choice
+    $('edGameSec').hidden = !!m;
+    $('edMusicLead').textContent = this.t(m ? 'ed.musicLeadOwn' : 'ed.musicLead');
     let info = this.musicNote;
     if (m && !info) {
       const d = Math.round(m.duration);
@@ -604,9 +575,8 @@ export class Editor {
       + (gen ? `<button data-song="${lv.song}" class="on">\u2726 ${gen[1]}</button>` : '');
     $('edMoods').innerHTML = MOODS.map((mood) => `<button data-mood="${mood}" class="${gen?.[2] === mood ? 'on' : ''}">\u2726 ${this.t('ed.mood.' + mood)}</button>`).join('');
     const song = songByName(lv.song);
-    $('edSongInfo').textContent = song ? `${gen ? `\u2726 ${gen[2] ? this.t('ed.mood.' + gen[2]) + ' ' : ''}${gen[1]}` : lv.song.toUpperCase()} \u00B7 ${describeSong(song)}. ${this.t('ed.genNote')}` : this.t('ed.genNote');
+    $('edSongInfo').textContent = `${song ? (gen ? `\u2726 ${gen[2] ? this.t('ed.mood.' + gen[2]) + ' ' : ''}${gen[1]}` : lv.song.toUpperCase()) + '. ' : ''}${this.t('ed.genNote')}`;
     $('edSongPlay').textContent = this.t(this.audition ? 'ed.songStop' : 'ed.songPlay');
-    $('edSongLabel').textContent = this.t(m ? 'ed.songBackup' : 'ed.song');
     const sp = $<HTMLInputElement>('edSpeed');
     sp.min = String(MIN_SPEED); sp.max = String(MAX_SPEED); sp.value = String(Math.round(lv.speed));
     $('edSpeedVal').textContent = `${Math.round(lv.speed)} m/s = ${Math.round(lv.speed * 5)} BPM`;
@@ -620,8 +590,6 @@ export class Editor {
 
   private palette(): void {
     if (this.root.hidden) return;
-    $('edTabTiles').classList.toggle('on', this.tab === 'tiles');
-    $('edTabFigs').classList.toggle('on', this.tab === 'figs');
     const box = $('edPalette');
     box.textContent = '';
     const add = (label: string, on: boolean, w: number, paint: (c: CanvasRenderingContext2D) => void, pick: () => void) => {
@@ -644,29 +612,18 @@ export class Editor {
       c.strokeStyle = '#fff'; c.lineWidth = 2; c.lineCap = 'round'; c.lineJoin = 'round';
       c.beginPath(); c.moveTo(6, 17); c.lineTo(28, 17); c.moveTo(11, 12); c.lineTo(6, 17); c.lineTo(11, 22); c.moveTo(23, 12); c.lineTo(28, 17); c.lineTo(23, 22); c.stroke();
     }, () => { this.tool = { kind: 'pan' }; });
-    if (this.tab === 'tiles') {
-      for (const [ch, key] of TILES) {
-        add(this.t(`ed.t.${key}.n`), tl.kind === 'tile' && tl.t === ch, 34, (c) => {
-          c.fillStyle = '#04041a'; c.fillRect(2, 2, 30, 30);
-          drawTile(c, ch, pal, 3, 3, 28, 28);
-        }, () => { this.tool = { kind: 'tile', t: ch }; });
-      }
-      add(this.t('ed.t.flip.n'), tl.kind === 'flip', 34, (c) => {
-        c.fillStyle = 'rgba(255,60,220,.35)'; c.fillRect(2, 2, 30, 30);
-        c.strokeStyle = '#fff'; c.lineWidth = 2; c.lineCap = 'round'; c.lineJoin = 'round';
-        c.beginPath(); c.moveTo(12, 25); c.lineTo(12, 9); c.lineTo(8, 13); c.moveTo(12, 9); c.lineTo(16, 13);
-        c.moveTo(22, 9); c.lineTo(22, 25); c.lineTo(18, 21); c.moveTo(22, 25); c.lineTo(26, 21); c.stroke();
-      }, () => { this.tool = { kind: 'flip' }; });
-    } else {
-      for (const f of FIGURES) {
-        const rows = f.build(1, this.lv.speed);
-        const cell = 6, w = Math.max(34, rows.length * cell + 6);
-        add(this.t(`ed.f.${f.id}.n`), tl.kind === 'fig' && tl.f === f, w, (c) => {
-          c.fillStyle = '#04041a'; c.fillRect(0, 0, w, 34);
-          drawRows(c, rows, pal, (w - rows.length * cell) / 2, 2, cell);
-        }, () => { this.tool = { kind: 'fig', f }; });
-      }
+    for (const [ch, key] of TILES) {
+      add(this.t(`ed.t.${key}.n`), tl.kind === 'tile' && tl.t === ch, 34, (c) => {
+        c.fillStyle = '#04041a'; c.fillRect(2, 2, 30, 30);
+        drawTile(c, ch, pal, 3, 3, 28, 28);
+      }, () => { this.tool = { kind: 'tile', t: ch }; });
     }
+    add(this.t('ed.t.flip.n'), tl.kind === 'flip', 34, (c) => {
+      c.fillStyle = 'rgba(255,60,220,.35)'; c.fillRect(2, 2, 30, 30);
+      c.strokeStyle = '#fff'; c.lineWidth = 2; c.lineCap = 'round'; c.lineJoin = 'round';
+      c.beginPath(); c.moveTo(12, 25); c.lineTo(12, 9); c.lineTo(8, 13); c.moveTo(12, 9); c.lineTo(16, 13);
+      c.moveTo(22, 9); c.lineTo(22, 25); c.lineTo(18, 21); c.moveTo(22, 25); c.lineTo(26, 21); c.stroke();
+    }, () => { this.tool = { kind: 'flip' }; });
   }
 
   // ------------------------------------------------------------------ view
@@ -716,8 +673,8 @@ export class Editor {
     if (this.busy) return;
     if (this.ptrs.size === 2) {
       // a second finger turns whatever was going on into scrolling
-      if (this.drag?.kind === 'paint') { const s = this.undo.pop(); if (s) { this.lv.rows = s.rows; this.lv.flipBars = s.flipBars; this.rebuild(); } }
-      this.ghost = null;
+      if (this.drag?.kind === 'paint') { const s = this.undo.pop(); if (s) { this.lv.rows = s.rows; this.lv.flipRows = s.flipRows; this.rebuild(); } }
+      if (this.drag?.kind === 'flip') { const s = this.undo.pop(); if (s) { this.lv.rows = s.rows; this.lv.flipRows = s.flipRows; this.rebuild(); } }
       this.drag = { kind: 'pan', x: this.midX(), scroll: this.scroll };
       return;
     }
@@ -728,12 +685,13 @@ export class Editor {
     const cell = this.cellAt(p.x, p.y);
     if (p.y < STRIP || tl.kind === 'pan' || !cell) { this.drag = { kind: 'pan', x: p.x, scroll: this.scroll }; return; }
     if (tl.kind === 'flip') {
-      const bar = Math.floor(cell.row / BAR_ROWS);
-      if (bar === 0) return; // the ship starts here
+      // drag across the columns that are to be upside down; starting on a flipped column wipes instead
+      if (cell.row < FLIP_FROM) return; // the ship starts here
       this.snap();
-      const i = this.lv.flipBars.indexOf(bar);
-      if (i >= 0) this.lv.flipBars.splice(i, 1); else this.lv.flipBars.push(bar);
-      this.changedRows();
+      const on = !this.lv.flipRows.includes(cell.row);
+      this.setFlip(cell.row, on);
+      this.drag = { kind: 'flip', on, row: cell.row };
+      this.draw();
     } else if (tl.kind === 'tile') {
       // painting a tile onto itself wipes back to floor instead
       const t = this.lv.rows[cell.row][cell.lane] === tl.t && tl.t !== '=' ? '=' : tl.t;
@@ -741,10 +699,14 @@ export class Editor {
       this.setTile(cell.row, cell.lane, t);
       this.drag = { kind: 'paint', t, row: cell.row, lane: cell.lane };
       this.draw();
-    } else {
-      this.drag = { kind: 'fig' };
-      this.hover(p);
     }
+  }
+
+  private setFlip(row: number, on: boolean): void {
+    if (row < FLIP_FROM || row >= this.lv.rows.length) return;
+    const i = this.lv.flipRows.indexOf(row);
+    if (on && i < 0) this.lv.flipRows.push(row);
+    else if (!on && i >= 0) this.lv.flipRows.splice(i, 1);
   }
 
   /** Is the point on the "add a section" button after the finish line? */
@@ -766,14 +728,6 @@ export class Editor {
     return s / (this.ptrs.size || 1);
   }
 
-  private hover(p: { x: number; y: number }): void {
-    const tl = this.tool, cell = this.cellAt(p.x, p.y);
-    if (tl.kind !== 'fig' || !cell) { this.ghost = null; this.draw(); return; }
-    const row = cell.row - (cell.row % CFG.rowsPerBeat);
-    this.ghost = { row, rows: tl.f.build(cell.lane, this.lv.speed).slice(0, this.lv.rows.length - row) };
-    this.draw();
-  }
-
   private move(e: PointerEvent): void {
     if (!this.ptrs.has(e.pointerId)) return;
     e.preventDefault();
@@ -783,8 +737,13 @@ export class Editor {
     if (!d) return;
     if (d.kind === 'pan') this.scrollTo(d.scroll - ((this.ptrs.size > 1 ? this.midX() : p.x) - d.x));
     else if (d.kind === 'map') this.mapScroll(p.x);
-    else if (d.kind === 'fig') this.hover(p);
-    else {
+    else if (d.kind === 'flip') {
+      const cell = this.cellAt(p.x, p.y);
+      if (!cell) return;
+      for (let r = Math.min(d.row, cell.row); r <= Math.max(d.row, cell.row); r++) this.setFlip(r, d.on);
+      d.row = cell.row;
+      this.draw();
+    } else {
       const cell = this.cellAt(p.x, p.y);
       if (!cell) return;
       // fill in the cells a fast finger skipped
@@ -804,15 +763,7 @@ export class Editor {
     if (this.ptrs.size > 0) { if (d?.kind === 'pan') this.drag = { kind: 'pan', x: this.midX(), scroll: this.scroll }; return; }
     this.drag = null;
     if (d?.kind === 'paint') this.changedRows();
-    else if (d?.kind === 'fig') {
-      const g = this.ghost;
-      this.ghost = null;
-      if (g && e.type === 'pointerup') {
-        this.snap();
-        g.rows.forEach((r, i) => { this.lv.rows[g.row + i] = r; });
-        this.changedRows();
-      } else this.draw();
-    }
+    else if (d?.kind === 'flip') { this.lv.flipRows.sort((a, b) => a - b); this.changedRows(); }
   }
 
   private mapScroll(x: number): void {
@@ -832,7 +783,7 @@ export class Editor {
     const lh = MAP / CFG.lanes;
     const col: Record<string, string> = {
       '=': css(pal.floor), '#': css(pal.block), x: css(pal.block), o: css(pal.gem), O: css(pal.gem), '*': css(pal.gem), '+': css(pal.gem),
-      '^': css(pal.accent), '>': '#fff', i: '#bfeaff', m: css(pal.edge), '|': css(pal.edge),
+      '^': css(pal.accent), '>': '#fff', i: '#bfeaff', m: css(pal.edge), '|': css(pal.edge), n: css(pal.blockEdge),
     };
     for (let x = 0; x < W; x++) {
       const row = this.lv.rows[Math.min(n - 1, Math.floor((x / W) * n))];
@@ -877,13 +828,15 @@ export class Editor {
     c.restore();
 
     // gravity-flip zones
-    for (const b of lv.flipBars) {
-      const x = X(b * BAR_ROWS);
-      if (x > W || x + BAR_ROWS * cw < 0) continue;
-      c.fillStyle = 'rgba(255,60,220,.2)';
-      c.fillRect(x, gy, BAR_ROWS * cw, gh);
-      c.fillStyle = '#ff7ae6'; c.font = font(9); c.textAlign = 'right';
-      c.fillText('⇅ ' + this.t('ed.t.flip.n'), x + BAR_ROWS * cw - 4, 11);
+    for (const [from, to] of flipRanges(lv.flipRows, n)) {
+      const x = X(from), wd = (to - from) * cw;
+      if (x > W || x + wd < 0) continue;
+      c.fillStyle = 'rgba(255,60,220,.24)';
+      c.fillRect(x, gy, wd, gh);
+      c.strokeStyle = '#ff7ae6'; c.lineWidth = 2;
+      c.strokeRect(x + 1, gy + 1, wd - 2, gh - 2);
+      c.fillStyle = '#ff7ae6'; c.font = font(11); c.textAlign = 'center';
+      c.fillText('\u21C5', x + wd / 2, STRIP - 5);
     }
 
     // beat lines (dashed) and bar lines (solid, numbered)
@@ -976,18 +929,6 @@ export class Editor {
       c.strokeRect(x + 1, gy + 1, cw - 2, gh - 2);
     }
 
-    // the figure about to be placed
-    const g = this.ghost;
-    if (g) {
-      c.globalAlpha = 0.8;
-      c.fillStyle = '#04041a';
-      c.fillRect(X(g.row), gy, g.rows.length * cw, gh);
-      g.rows.forEach((row, i) => [...row].forEach((t, l) => drawTile(c, t, pal, X(g.row + i) + pad, gy + l * lh + pad, cw - 2 * pad, lh - 2 * pad)));
-      c.globalAlpha = 1;
-      c.strokeStyle = '#fff'; c.lineWidth = 2;
-      c.strokeRect(X(g.row) + 1, gy + 1, g.rows.length * cw - 2, gh - 2);
-    }
-
     // minimap: the whole track, with the part in view framed
     if (this.mapDirty) this.drawMap();
     const my = H - MAP;
@@ -998,6 +939,9 @@ export class Editor {
     if (this.stuckRow >= 0) { c.fillStyle = '#ff2a3c'; c.fillRect((this.stuckRow / n) * W - 1, my - 4, 3, MAP + 4); }
     c.strokeStyle = '#fff'; c.lineWidth = 1.5;
     const vx = Math.max(0, (this.scroll / total) * W), vw = Math.min(W - vx, (W / total) * W);
-    c.strokeRect(vx + 0.75, my + 0.75, Math.max(6, vw) - 1.5, MAP - 1.5);
+    c.fillStyle = 'rgba(255,255,255,.16)';
+    c.fillRect(vx, my, Math.max(14, vw), MAP);
+    c.lineWidth = 2.5;
+    c.strokeRect(vx + 1.25, my + 1.25, Math.max(14, vw) - 2.5, MAP - 2.5);
   }
 }

@@ -6,6 +6,7 @@ import { F, FIGURES, autoFill, isPlainBar } from '../src/core/figures';
 import { Level } from '../src/core/level';
 import { LEVELS } from '../src/core/levels';
 import { lint } from '../src/core/rules';
+import { Sim } from '../src/core/sim';
 import { Solver, solve } from '../src/core/solve';
 
 const mk = (rows: string[], speed = 28, flips?: [number, number][]) => new Level({ id: 't', name: 'T', world: 0, speed, song: 'cyan', rows, flips });
@@ -137,20 +138,35 @@ describe('custom tracks', () => {
     const e = musicEnergy(music, 16);
     expect(e.slice(9, 13)).toEqual([1, 1, 1, 1]);
     expect(e[0]).toBe(3);
-    const c = { ...blankLevel('a1', 'MINE', 16), music, speed: music.bpm / 5, flipBars: [4, 5, 9] };
+    const c = { ...blankLevel('a1', 'MINE', 16), music, speed: music.bpm / 5, flipRows: [...Array.from({ length: 24 }, (_, k) => 48 + k), 110, 111] };
     const def = toDef(c);
     expect(def.id).toBe('custom:a1');
     expect(def.energy).toBe(e.join(''));
-    expect(def.flips).toEqual([[48, 72], [108, 120]]);
+    expect(def.flips).toEqual([[48, 72], [110, 112]]);
     const level = new Level(def);
     expect(level.bpm).toBeCloseTo(128, 6);
     expect(level.bars).toBe(16);
     expect(level.energyOf(10)).toBe(1);
   });
 
-  it('flip zones are runs of bars', () => {
-    expect(flipRanges([], 8)).toEqual([]);
-    expect(flipRanges([2, 3, 4, 7], 8)).toEqual([[24, 60], [84, 96]]);
+  it('flip zones are runs of rows, never over the start', () => {
+    expect(flipRanges([], 96)).toEqual([]);
+    expect(flipRanges([0, 1, 2, 3, 4, 30, 31, 50], 96)).toEqual([[3, 5], [30, 32], [50, 51]]);
+  });
+
+  it('an air block is driven under and kills a ship that jumps into it', () => {
+    const rows = Array<string>(4 * BAR_ROWS).fill(F);
+    rows[13] = 'nnnnn';
+    const drive = new Sim(mk(rows));
+    while (drive.s.alive && drive.s.z < 80) drive.step({ steer: 0, jumpPressed: false, jumpHeld: false });
+    expect(drive.s.alive, 'driving under').toBe(true);
+    const jump = new Sim(mk(rows));
+    while (jump.s.alive && jump.s.z < 80) jump.step({ steer: 0, jumpPressed: jump.s.z > 47 && jump.s.grounded, jumpHeld: false });
+    expect(jump.s.alive, 'jumping into it').toBe(false);
+    expect(Math.floor(jump.s.z / CFG.tileL)).toBeGreaterThanOrEqual(12);
+    expect(Math.floor(jump.s.z / CFG.tileL)).toBeLessThanOrEqual(13);
+    // and the bots know to stay down
+    expect(solve(mk(rows), 6, 0, Infinity, true).ok).toBe(true);
   });
 
   it('stored data is rebuilt defensively', () => {
@@ -161,7 +177,7 @@ describe('custom tracks', () => {
     expect(c.rows.slice(0, 5)).toEqual([F, F, F, F, '.....']);
     expect(c.speed).toBe(38);
     expect(c.world).toBe(0);
-    expect(c.flipBars).toEqual([1]);
+    expect(c.flipRows).toEqual(Array.from({ length: 12 }, (_, k) => 12 + k));
     expect(c.music).toBeUndefined();
     expect(() => new Level(toDef(c))).not.toThrow();
     const withMusic = sanitize({ id: 'y', rows: Array(48).fill(F), speed: 24, music })!;

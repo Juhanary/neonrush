@@ -140,7 +140,7 @@ export class Level {
     return this.rows[row][lane];
   }
 
-  /** Walkable surface height at a point, or null over a gap. Spikes ('x') stand on floor (height 0) and are lethal in Sim. `beat` (the ship's beat position) only matters for moving tiles. */
+  /** Walkable surface height at a point, or null over a gap. Spikes ('x') and air blocks ('n') stand on or over floor (height 0) and are lethal in Sim. `beat` (the ship's beat position) only matters for moving tiles. */
   heightAt(x: number, z: number, beat = 0): number | null {
     const row = this.rowOf(z);
     const lane = this.laneOf(x);

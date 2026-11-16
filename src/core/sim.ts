@@ -205,6 +205,18 @@ export class Sim {
       }
     }
 
+    // --- air blocks: the same footprint, when the ship is at their height ---
+    if (s.y + CFG.shipH > CFG.airLo && s.y < CFG.airHi) {
+      const hx = CFG.shipHalfW - CFG.spikeInset, hz = CFG.shipHalfL - CFG.spikeInset;
+      for (const [dx, dz] of [[-hx, hz], [hx, hz], [-hx, -hz], [hx, -hz], [0, 0]]) {
+        if (L.tile(L.rowOf(s.z + dz), L.laneOf(s.x + dx)) === 'n') {
+          s.alive = false;
+          this.events.push({ type: 'crash' });
+          return;
+        }
+      }
+    }
+
     // --- tiles under the ship ---------------------------------------------
     const row = L.rowOf(s.z);
     const lane = L.laneOf(s.x);

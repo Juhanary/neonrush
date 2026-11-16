@@ -1,5 +1,5 @@
-// Headless run through the level editor: new track, a figure and painted tiles, a music file (a synthetic
-// 128 BPM song written here as a WAV), automatic fill, the bot check, a test drive with the file as music,
+// Headless run through the level editor: new track, sections, painted tiles, an air block, a flip zone, a music file (a synthetic
+// 128 BPM song written here as a WAV), the bot check, a test drive with the file as music,
 // back to the editor, the menu card, and the same track after a reload.
 //   node scripts/editor.mjs http://localhost:4173/ /tmp/shots
 import { writeFileSync } from 'node:fs';
@@ -45,7 +45,7 @@ const grid = async () => { const r = await p.$eval('#edGrid', (e) => { const b =
 const cell = async (row, lane) => {
   const g = await grid();
   const s = await ed(() => { const e = window.__game.editor; return { cw: e.cw, scroll: e.scroll }; });
-  return { x: g.x + (row + 0.5) * s.cw - s.scroll, y: g.y + 30 + (lane + 0.5) * ((g.h - 30 - 14 - 6) / 5) };
+  return { x: g.x + (row + 0.5) * s.cw - s.scroll, y: g.y + 30 + (lane + 0.5) * ((g.h - 30 - 34 - 6) / 5) };
 };
 const pick = (label) => p.evaluate((label) => { const b = [...document.querySelectorAll('#edPalette button')].find((x) => x.querySelector('span').textContent === label); b?.click(); return !!b; }, label);
 
@@ -63,19 +63,24 @@ await p.screenshot({ path: `${out}/editor-1c-section.png` });
 res.barsAfterAdd = await ed(() => window.__game.editor.lv.rows.length / 12);
 await ed(() => { const e = window.__game.editor; e.setBars(16); e.scrollTo(-20); });
 await sleep(200);
-// 2. a figure on bar 1 beat 3, then single tiles painted with a drag
-await p.screenshot({ path: `${out}/editor-1b-figures.png` });
-await p.tap('#edTabFigs'); await sleep(150);
-res.pickHop = await pick('JUMP');
-let c = await cell(7, 2);
-await p.touchscreen.tap(c.x, c.y);
+// 2. single tiles: a gap two columns long painted with a drag, a wall of blocks, an air block, a short flip zone
+res.pickGap = await pick('GAP');
+{ const a = await cell(7, 0), z = await cell(8, 4), m = await cell(7, 4), n = await cell(8, 0);
+  await p.touchscreen.touchStart(a.x, a.y); await p.touchscreen.touchMove(m.x, m.y); await p.touchscreen.touchMove(n.x, n.y); await p.touchscreen.touchMove(z.x, z.y); await p.touchscreen.touchEnd(); }
 await sleep(200);
-await p.tap('#edTabTiles');
+res.pickAir = await pick('AIR BLOCK');
+let c = await cell(20, 2);
+await p.touchscreen.tap(c.x, c.y);
+res.pickFlip = await pick('FLIP ZONE');
+{ const a = await cell(22, 2), z = await cell(23, 2);
+  await p.touchscreen.touchStart(a.x, a.y); await p.touchscreen.touchMove(z.x, z.y); await p.touchscreen.touchEnd(); }
+await sleep(200);
+res.flips = await ed(() => window.__game.editor.level.def.flips);
 res.pickBlock = await pick('BLOCK');
 const a = await cell(15, 0), z = await cell(15, 2);
 await p.touchscreen.touchStart(a.x, a.y); await p.touchscreen.touchMove((a.x + z.x) / 2, (a.y + z.y) / 2); await p.touchscreen.touchMove(z.x, z.y); await p.touchscreen.touchEnd();
 await sleep(200);
-res.rows = await ed(() => window.__game.editor.lv.rows.slice(0, 18).join(' '));
+res.rows = await ed(() => window.__game.editor.lv.rows.slice(0, 28).join(' '));
 // a gem off the beat row shows a rule hint
 await pick('GEM');
 c = await cell(19, 2); await p.touchscreen.tap(c.x, c.y);
@@ -116,17 +121,17 @@ res.bpmBack = await ed(() => ({ bpm: window.__game.editor.lv.music.bpm, t0: wind
 await p.tap('#edListen'); await sleep(1200);
 res.preview = await ed(() => ({ previewing: window.__game.audio.previewing, label: document.getElementById('edListen').textContent }));
 await p.tap('#edListen'); await sleep(200);
-await p.tap('#edClose');
+await p.evaluate(() => document.querySelector('#edSheetMusic .edClose').click());
 await sleep(300);
 // adding music re-checks what was built: wait for that to finish
 for (let t = 0; t < 60000 && (await ed(() => window.__game.editor.busy)); t += 250) await sleep(250);
 res.recheck = await status();
 
-// 4. automatic fill and the bot check
-await p.tap('#edAuto');
-res.autoOk = await waitStatus(/^[✓✖]/);
-res.auto = await status();
-await p.screenshot({ path: `${out}/editor-5-auto.png` });
+// 4. the bot check, and the track sheet
+await p.tap('#edTrack'); await sleep(300);
+await p.screenshot({ path: `${out}/editor-5-track.png` });
+await p.evaluate(() => document.querySelector('#edSheetTrack .edClose').click());
+await sleep(200);
 await p.tap('#edCheck');
 await sleep(400);
 res.checkOk = await waitStatus(/^[✓✖⚠]/);
@@ -169,7 +174,7 @@ await sleep(700);
 await p.screenshot({ path: `${out}/editor-9-fi.png` });
 await p.tap('#edSet'); await sleep(300);
 await p.screenshot({ path: `${out}/editor-10-fi-panel.png` });
-await p.tap('#edClose'); await sleep(200);
+await p.evaluate(() => document.querySelector('#edSheetMusic .edClose').click()); await sleep(200);
 await p.setViewport({ width: 390, height: 760, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 await sleep(600);
 await p.screenshot({ path: `${out}/editor-11-portrait.png` });

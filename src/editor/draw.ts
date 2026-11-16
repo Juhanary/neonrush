@@ -88,6 +88,18 @@ export function drawTile(c: CanvasRenderingContext2D, t: string, pal: Palette, x
       c.closePath(); c.fill();
       break;
     }
+    case 'n': {
+      // air block: a block that floats, with its shadow on the road under it
+      floor(c, pal, x, y, w, h);
+      const m = u * 0.14;
+      c.fillStyle = 'rgba(0,0,0,.5)';
+      c.fillRect(x + m + u * 0.1, y + m + u * 0.12, w - 2 * m, h - 2 * m);
+      c.fillStyle = css(pal.block);
+      c.fillRect(x + m - u * 0.04, y + m - u * 0.06, w - 2 * m, h - 2 * m);
+      c.strokeStyle = '#fff'; c.lineWidth = Math.max(1, u * 0.06);
+      c.strokeRect(x + m - u * 0.04, y + m - u * 0.06, w - 2 * m, h - 2 * m);
+      break;
+    }
     case 'i': {
       floor(c, pal, x, y, w, h, '#bfeaff');
       c.strokeStyle = 'rgba(255,255,255,.95)'; c.lineWidth = Math.max(1, u * 0.06);

@@ -4,14 +4,17 @@ Players build their own tracks and drive them to their own music. Entry: `+ NEW 
 
 ## What the player does
 
-1. **Build.** The track is shown from above, driving direction to the right: five lanes, three columns to a beat, twelve to a bar. Lighter columns are beat rows. A new track is one empty section (four bars); `+ SECTION` after the finish line adds another. Building starts with single blocks.
-   - **Figures** are whole beats and always land on a beat: jump, wall, spikes, jump pad, long jump, zigzag, skyway, boost jump and so on. Tap a beat to place one; one-sided figures face the side that was tapped.
-   - **Blocks** are single tiles, painted with a finger: floor, gap, block, spikes, the four gems, jump pad, boost, ice, moving road, rail. Painting a tile onto itself wipes it back to floor. `FLIP ZONE` toggles a gravity-flip bar.
-   - Two fingers (or the `MOVE` tool, the strip above the lanes, the minimap) scroll. Undo and redo keep 80 steps.
+1. **Build.** The track is shown from above, driving direction to the right: five lanes, three columns to a beat, twelve to a bar. Lighter columns are beat rows. A new track is one empty section (four bars); `+ SECTION` after the finish line adds another.
+   - **Blocks** are single tiles, placed with a tap or painted with a finger: floor, gap, block, spikes, the four gems, jump pad (arrow up), boost (arrow forward), air block, ice, moving road, rail. Painting a tile onto itself wipes it back to floor.
+   - **Air block** (`n`) floats over the road: the ship drives under it and is destroyed if it touches it (a jump, a pad flight). See `CFG.airLo`, `airHi`, `shipH`.
+   - **Flip zone**: drag over the columns where gravity is reversed. Any length from one column up (the first three columns of the track excepted); stored as `flipRows`.
+   - Two fingers, the `MOVE` tool, the strip above the lanes or the wide bar under the track scroll. Undo and redo keep 80 steps.
+   - The figure stamps and the automatic fill (`core/figures.ts`, `core/auto.ts`) are no longer in the editor's interface after player feedback (16.11.): building is one block at a time. The code and its tests remain.
 2. **Music.** `MUSIC` → choose a file. It is analysed and the track takes its tempo: speed = BPM / 5, as everywhere in the game. The strip above the lanes then shows the song beat by beat (height = loudness, colour = intensity of the bar, dot = strong hit). `LISTEN` plays the song with a click on every beat for checking the grid; tempo, start point (by beat or bar), half a beat and ±10 ms can be corrected. Without a file the track plays a game song at a chosen speed: any built-in song, or `NEW SONG` in a mood (chase, night, cold), which has the generator of `docs/MUSIC.md` write one (`genName(seed, mood)`, checked with `checkSong`; the track stores only the name `gen:<seed>:<mood>`). `LISTEN` auditions the song at the track's tempo, stepping through every intensity in eight bars. With a file, the game song is the backup.
-3. **AUTO** fills every bar that is still plain floor with figures that follow the intensity of the music, and lets the rhythm bot prove the result. Built bars are never touched.
-4. **CHECK** lets the bots play: first pressing jump only on the beat, then freely. The result is "can be finished", "passable but a jump is off the beat in bar N", or "stuck in bar N" with the spot marked. Yellow corners are rule hints (`core/rules.ts`), shown while building.
-5. **TEST** drives the track from the checkpoint at the left edge of the view, restarting from checkpoints, recording nothing. Back returns to the editor at the spot.
+3. **CAN IT BE DONE?** lets the bots play: first pressing jump only on the beat, then freely. The result is "can be finished", "passable but a jump is off the beat in bar N", or "stuck in bar N" with the spot marked. Yellow corners are rule hints (`core/rules.ts`), shown while building.
+4. **TEST DRIVE** drives the track from the checkpoint at the left edge of the view, restarting from checkpoints, recording nothing. Back returns to the editor at the spot.
+
+The top bar is icon-over-word buttons: MENU, UNDO, REDO, ZOOM, MUSIC, TRACK (world, length, delete), CAN IT BE DONE?, TEST DRIVE. The music sheet is two boxes: A, a game song (tap to choose and hear, or have a new one written in a mood, and the track speed), and B, a song of your own (choose a file, listen with a click, fine tuning folded away).
 
 Tracks are saved on every change. Editing a track clears its records.
 

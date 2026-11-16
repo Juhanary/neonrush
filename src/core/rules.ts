@@ -20,7 +20,7 @@ export type IssueCode =
 
 export interface Issue { row: number; lane: number; code: IssueCode }
 
-const solid = (s: string): boolean => /[=oOi|m^>x]/.test(s);
+const solid = (s: string): boolean => /[=oOi|m^>xn]/.test(s);
 
 export function lint(level: Level): Issue[] {
   const out: Issue[] = [];
